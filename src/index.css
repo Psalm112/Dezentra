@@ -1,0 +1,70 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+.scrollbar-hide::-webkit-scrollbar, .hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide, .hide-scrollbar {
+   -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+ /* {
+  display: none;
+}
+
+ {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+} */
+
+/* Custom scrollbar styling */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: #3A3D42;
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: #545456;
+}
+
+/* For Firefox */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #3A3D42 transparent;
+}
+
+@layer base {
+  body {
+    @apply bg-Dark text-white;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-Red text-white font-bold py-2 px-4 transition-opacity hover:opacity-90;
+  }
+  
+  .btn-secondary {
+    @apply bg-[#292B30] text-white font-bold py-2 px-4 transition-colors hover:bg-[#343539];
+  }
+  
+  .input-primary {
+    @apply bg-[#292B30] text-white border-none outline-none px-4 py-3 w-full focus:ring-1 focus:ring-Red;
+  }
+}
+@use "./everything" as *;
+
+@include react-md-utils;
