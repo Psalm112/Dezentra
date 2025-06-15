@@ -35,6 +35,7 @@ interface FormErrors {
   logistics?: string;
   variants?: string;
   sellerWalletAddress?: string;
+  destinationChain?: string;
   submit?: string;
 }
 
@@ -51,6 +52,13 @@ interface ProductVariant {
     value: string;
   }[];
   quantity: number;
+}
+interface SupportedChain {
+  id: string;
+  name: string;
+  symbol: string;
+  rpcUrl: string;
+  blockExplorer: string;
 }
 
 // Constants
@@ -113,6 +121,44 @@ const COMPANY_SUFFIXES = [
   "Movers",
 ];
 
+const SUPPORTED_CHAINS: SupportedChain[] = [
+  {
+    id: "celo",
+    name: "Celo",
+    symbol: "CELO",
+    rpcUrl: "https://forno.celo.org",
+    blockExplorer: "https://celoscan.io",
+  },
+  {
+    id: "ethereum",
+    name: "Ethereum",
+    symbol: "ETH",
+    rpcUrl: "https://mainnet.infura.io/v3/",
+    blockExplorer: "https://etherscan.io",
+  },
+  {
+    id: "polygon",
+    name: "Polygon",
+    symbol: "MATIC",
+    rpcUrl: "https://polygon-rpc.com",
+    blockExplorer: "https://polygonscan.com",
+  },
+  {
+    id: "bsc",
+    name: "Binance Smart Chain",
+    symbol: "BNB",
+    rpcUrl: "https://bsc-dataseed1.binance.org",
+    blockExplorer: "https://bscscan.com",
+  },
+  {
+    id: "arbitrum",
+    name: "Arbitrum One",
+    symbol: "ETH",
+    rpcUrl: "https://arb1.arbitrum.io/rpc",
+    blockExplorer: "https://arbiscan.io",
+  },
+];
+
 const fadeInAnimation = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
@@ -121,7 +167,7 @@ const fadeInAnimation = {
 };
 
 const CreateProduct: React.FC<CreateProductProps> = ({ onProductCreated }) => {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const { createProduct, loading } = useProductData();
   const { showSnackbar } = useSnackbar();
   const { convertPrice, userCountry } = useCurrencyConverter();
@@ -143,6 +189,7 @@ const CreateProduct: React.FC<CreateProductProps> = ({ onProductCreated }) => {
     sellerWalletAddress: "",
     priceInUSDT: "",
     priceInFiat: "",
+    destinationChain: "celo",
   });
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -549,7 +596,10 @@ const CreateProduct: React.FC<CreateProductProps> = ({ onProductCreated }) => {
     } else if (!/^0x[a-fA-F0-9]{40}$/.test(sellerWalletAddress)) {
       newErrors.sellerWalletAddress = "Invalid Ethereum wallet address format";
     }
-
+    // Destination chain validation
+    if (!formState.destinationChain) {
+      newErrors.destinationChain = "Please select a destination chain";
+    }
     // Logistics provider validation
     if (selectedLogistics.length === 0) {
       newErrors.logistics = "Please select at least one logistics provider";
@@ -611,6 +661,7 @@ const CreateProduct: React.FC<CreateProductProps> = ({ onProductCreated }) => {
       formData.append("price", priceInUSDT);
       formData.append("stock", stock);
       formData.append("sellerWalletAddress", sellerWalletAddress);
+      formData.append("destinationChain", formState.destinationChain);
       formData.append("useUSDT", "true");
 
       if (selectedLogistics.length > 0) {
@@ -660,6 +711,7 @@ const CreateProduct: React.FC<CreateProductProps> = ({ onProductCreated }) => {
             sellerWalletAddress: "",
             priceInUSDT: "",
             priceInFiat: "",
+            destinationChain: "celo",
           });
           setMediaFiles([]);
           setVariants([
@@ -1000,6 +1052,66 @@ const CreateProduct: React.FC<CreateProductProps> = ({ onProductCreated }) => {
                 {errors.sellerWalletAddress}
               </p>
             )}
+          </section>
+
+          {/* Destination Chain */}
+          <section aria-labelledby="chain-section">
+            <label
+              id="chain-section"
+              htmlFor="destinationChain"
+              className="block text-white mb-2"
+            >
+              Destination Chain
+            </label>
+            <div className="relative">
+              <select
+                id="destinationChain"
+                value={formState.destinationChain}
+                onChange={(e) =>
+                  updateFormField("destinationChain", e.target.value)
+                }
+                className={`w-full bg-[#333] text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-Red transition-all appearance-none ${
+                  errors.destinationChain ? "border border-Red" : ""
+                }`}
+                aria-invalid={!!errors.destinationChain}
+                aria-describedby={
+                  errors.destinationChain ? "chain-error" : undefined
+                }
+              >
+                {SUPPORTED_CHAINS.map((chain) => (
+                  <option key={chain.id} value={chain.id}>
+                    {chain.name} ({chain.symbol})
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                  viewBox="0 0 16 16"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"
+                  />
+                </svg>
+              </div>
+            </div>
+            {errors.destinationChain && (
+              <p
+                id="chain-error"
+                className="text-Red text-sm mt-1"
+                role="alert"
+              >
+                {errors.destinationChain}
+              </p>
+            )}
+            <p className="text-gray-400 text-xs mt-1">
+              Select the blockchain network where this product will be deployed
+            </p>
           </section>
 
           {/* Product Variants/Types */}
