@@ -119,7 +119,7 @@ const Product = () => {
               <IoSearch className="text-white text-xl" />
               <input
                 type="text"
-                placeholder="Search DezenMart"
+                placeholder="Search Dezentra"
                 className="w-full rounded-none bg-[#292B30] outline-none text-white placeholder-gray-400"
                 value={searchQuery}
                 onChange={handleSearch}

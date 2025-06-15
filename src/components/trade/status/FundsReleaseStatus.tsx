@@ -272,7 +272,7 @@ const FundsReleaseStatus: FC<FundsReleaseStatusProps> = ({
     <>
       <BaseStatus
         statusTitle="Confirm Delivery"
-        statusDescription="Dezenmart has confirmed payment for this order."
+        statusDescription="Dezentra has confirmed payment for this order."
         statusAlert={
           <StatusAlert
             icon={<BsShieldExclamation size={18} />}
