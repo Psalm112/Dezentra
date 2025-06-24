@@ -1,3 +1,4 @@
+// src/utils/config/web3.config.ts
 import { http, createConfig, fallback } from "wagmi";
 import {
   baseSepolia,
@@ -7,123 +8,142 @@ import {
 } from "wagmi/chains";
 import { coinbaseWallet, metaMask, walletConnect } from "wagmi/connectors";
 
-// RPC endpoints for better reliability
+// RPC endpoints with fallbacks for better reliability
 const rpcEndpoints = {
+  [avalancheFuji.id]: [
+    "https://api.avax-test.network/ext/bc/C/rpc",
+    "https://avalanche-fuji-c-chain-rpc.publicnode.com",
+    "https://rpc.ankr.com/avalanche_fuji",
+  ],
   [baseSepolia.id]: [
     "https://sepolia.base.org",
     "https://base-sepolia-rpc.publicnode.com",
+    "https://rpc.notadegen.com/base/sepolia",
   ],
   [sepolia.id]: [
     "https://ethereum-sepolia-rpc.publicnode.com",
     "https://sepolia.infura.io/v3/" +
       (import.meta.env.VITE_INFURA_PROJECT_ID || ""),
     "https://rpc.sepolia.org",
+    "https://rpc.ankr.com/eth_sepolia",
   ],
   [arbitrumSepolia.id]: [
     "https://sepolia-rollup.arbitrum.io/rpc",
     "https://arbitrum-sepolia.publicnode.com",
+    "https://rpc.ankr.com/arbitrum_sepolia",
   ],
-  [avalancheFuji.id]: [
-    "https://api.avax-test.network/ext/bc/C/rpc",
-    "https://avalanche-fuji-c-chain-rpc.publicnode.com",
-  ],
-};
+} as const;
 
-// USDT contract addresses for each supported chain
+// Contract addresses - Updated for hackathon deployment
 export const USDT_ADDRESSES = {
+  [avalancheFuji.id]: import.meta.env
+    .VITE_USDT_CONTRACT_ADDRESS_AVALANCHE_FUJI!,
   [baseSepolia.id]: import.meta.env.VITE_USDT_CONTRACT_ADDRESS_BASE_SEPOLIA!,
   [sepolia.id]: import.meta.env.VITE_USDT_CONTRACT_ADDRESS_SEPOLIA!,
   [arbitrumSepolia.id]: import.meta.env.VITE_USDT_CONTRACT_ADDRESS_ARB_SEPOLIA!,
-  [avalancheFuji.id]: import.meta.env
-    .VITE_USDT_CONTRACT_ADDRESS_AVALANCHE_FUJI!,
 } as const;
 
-// Escrow contract addresses for each supported chain
 export const ESCROW_ADDRESSES = {
+  [avalancheFuji.id]: import.meta.env.VITE_ESCROW_CONTRACT_AVALANCHE_FUJI!,
   [baseSepolia.id]: import.meta.env.VITE_ESCROW_CONTRACT_BASE_SEPOLIA!,
   [sepolia.id]: import.meta.env.VITE_ESCROW_CONTRACT_SEPOLIA!,
   [arbitrumSepolia.id]: import.meta.env.VITE_ESCROW_CONTRACT_ARB_SEPOLIA!,
-  [avalancheFuji.id]: import.meta.env.VITE_ESCROW_CONTRACT_AVALANCHE_FUJI!,
 } as const;
 
-// CCIP Router addresses for each chain
+// CCIP Router addresses (official Chainlink addresses)
 export const CCIP_ROUTER_ADDRESSES = {
+  [avalancheFuji.id]: "0xF694E193200268f9a4868e4Aa017A0118C9a8177",
   [baseSepolia.id]: "0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93",
   [sepolia.id]: "0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59",
   [arbitrumSepolia.id]: "0x2a9C5afB0d0e4BAb2BCdaE109EC4b0c4Be15a165",
-  [avalancheFuji.id]: "0xF694E193200268f9a4868e4Aa017A0118C9a8177",
 } as const;
 
-// CCIP Chain selectors for cross-chain operations
+// CCIP Chain selectors (official Chainlink selectors)
 export const CCIP_CHAIN_SELECTORS = {
+  [avalancheFuji.id]: "14767482510784806043",
   [baseSepolia.id]: "10344971235874465080",
   [sepolia.id]: "16015286601757825753",
   [arbitrumSepolia.id]: "3478487238524512106",
-  [avalancheFuji.id]: "14767482510784806043",
 } as const;
 
-// Chain metadata for display purposes
+// Chain metadata
 export const CHAIN_METADATA = {
+  [avalancheFuji.id]: {
+    name: "Avalanche Fuji",
+    shortName: "AVAX",
+    icon: "https://cryptologos.cc/logos/avalanche-avax-logo.png",
+    color: "#e84142",
+    nativeCurrency: "AVAX",
+    blockExplorer: "https://testnet.snowtrace.io",
+  },
   [baseSepolia.id]: {
     name: "Base Sepolia",
     shortName: "BASE",
     icon: "https://bridge.base.org/icons/base.svg",
     color: "#0052ff",
+    nativeCurrency: "ETH",
+    blockExplorer: "https://sepolia.basescan.org",
   },
   [sepolia.id]: {
     name: "Ethereum Sepolia",
     shortName: "ETH",
     icon: "https://ethereum.org/static/655ede01eb7c29458fcd8429c6c6b4fa/71c57/eth-diamond-black.png",
     color: "#627eea",
+    nativeCurrency: "ETH",
+    blockExplorer: "https://sepolia.etherscan.io",
   },
   [arbitrumSepolia.id]: {
     name: "Arbitrum Sepolia",
     shortName: "ARB",
     icon: "https://arbitrum.io/wp-content/uploads/2021/01/cropped-Arbitrum_Symbol_-_Full_color_-_White_background-32x32.png",
     color: "#28a0f0",
-  },
-  [avalancheFuji.id]: {
-    name: "Avalanche Fuji",
-    shortName: "AVAX",
-    icon: "https://cryptologos.cc/logos/avalanche-avax-logo.png",
-    color: "#e84142",
+    nativeCurrency: "ETH",
+    blockExplorer: "https://sepolia.arbiscan.io",
   },
 } as const;
 
-// Default chain - Avalanche Fuji for hackathon
+// Primary chain for hackathon - Avalanche Fuji
 export const TARGET_CHAIN = avalancheFuji;
 
-// Supported chains for the application
+// Supported chains ordered by preference
 export const SUPPORTED_CHAINS = [
   avalancheFuji,
   baseSepolia,
   sepolia,
   arbitrumSepolia,
-];
+] as const;
 
-// Get destination chains (excluding current chain)
+// Cross-chain compatible pairs
+export const CROSS_CHAIN_PAIRS: Record<number, number[]> = {
+  [avalancheFuji.id]: [baseSepolia.id, sepolia.id, arbitrumSepolia.id],
+  [baseSepolia.id]: [avalancheFuji.id, sepolia.id, arbitrumSepolia.id],
+  [sepolia.id]: [avalancheFuji.id, baseSepolia.id, arbitrumSepolia.id],
+  [arbitrumSepolia.id]: [avalancheFuji.id, baseSepolia.id, sepolia.id],
+} as const;
+
+// Utility functions
 export const getDestinationChains = (currentChainId: number) => {
-  return SUPPORTED_CHAINS.filter((chain) => chain.id !== currentChainId);
+  const pairs = CROSS_CHAIN_PAIRS[currentChainId];
+  return SUPPORTED_CHAINS.filter((chain) => pairs?.includes(chain.id));
 };
 
-// Check if cross-chain operation is supported
 export const isCrossChainSupported = (
   sourceChainId: number,
   destinationChainId: number
 ): boolean => {
-  const supportedChainIds = SUPPORTED_CHAINS.map((chain) => chain.id);
-  return (
-    supportedChainIds.includes(sourceChainId as any) &&
-    supportedChainIds.includes(destinationChainId as any)
-  );
+  const pairs = CROSS_CHAIN_PAIRS[sourceChainId];
+  return Boolean(pairs?.includes(destinationChainId));
 };
 
-// Get chain selector for CCIP
 export const getChainSelector = (chainId: number): string | undefined => {
   return CCIP_CHAIN_SELECTORS[chainId as keyof typeof CCIP_CHAIN_SELECTORS];
 };
 
-// Wagmi configuration
+export const getChainMetadata = (chainId: number) => {
+  return CHAIN_METADATA[chainId as keyof typeof CHAIN_METADATA];
+};
+
+// Optimized Wagmi configuration
 export const wagmiConfig = createConfig({
   chains: SUPPORTED_CHAINS as any,
   connectors: [
@@ -131,11 +151,13 @@ export const wagmiConfig = createConfig({
       dappMetadata: {
         name: "Dezenmart - Cross-Chain Marketplace",
         url: window.location.origin,
+        iconUrl: `${window.location.origin}/favicon.ico`,
       },
     }),
     coinbaseWallet({
       appName: "Dezenmart",
-      appLogoUrl: window.location.origin + "/images/logo-full.png",
+      appLogoUrl: `${window.location.origin}/images/logo-full.png`,
+      darkMode: false,
     }),
     ...(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
       ? [
@@ -146,7 +168,7 @@ export const wagmiConfig = createConfig({
               description:
                 "Cross-chain decentralized marketplace for secure crypto payments",
               url: window.location.origin,
-              icons: [window.location.origin + "/images/logo-full.png"],
+              icons: [`${window.location.origin}/images/logo-full.png`],
             },
             showQrModal: true,
           }),
@@ -158,7 +180,7 @@ export const wagmiConfig = createConfig({
       chain.id,
       fallback(
         rpcEndpoints[chain.id as keyof typeof rpcEndpoints]
-          .filter((url) => url) // Remove empty URLs
+          .filter(Boolean)
           .map((url) =>
             http(url, {
               batch: {
@@ -173,50 +195,80 @@ export const wagmiConfig = createConfig({
       ),
     ])
   ),
+  batch: {
+    multicall: {
+      batchSize: 1024 * 1024,
+      wait: 16,
+    },
+  },
+  pollingInterval: 4000,
 });
 
-// Gas limits for different operations
+// Gas limits optimized for contract operations
 export const GAS_LIMITS = {
   APPROVE: 100000n,
   BUY_TRADE: 800000n,
-  BUY_TRADE_CROSS_CHAIN: 1200000n,
+  BUY_CROSS_CHAIN_TRADE: 1200000n,
   CONFIRM_PURCHASE: 200000n,
   CONFIRM_DELIVERY: 200000n,
+  CONFIRM_CROSS_CHAIN_PURCHASE: 300000n,
+  CONFIRM_CROSS_CHAIN_DELIVERY: 300000n,
   CREATE_TRADE: 600000n,
   RAISE_DISPUTE: 300000n,
+  RAISE_CROSS_CHAIN_DISPUTE: 400000n,
   CANCEL_PURCHASE: 250000n,
+  CANCEL_CROSS_CHAIN_PURCHASE: 350000n,
+  REGISTER_BUYER: 100000n,
+  REGISTER_SELLER: 100000n,
+  REGISTER_LOGISTICS_PROVIDER: 100000n,
 } as const;
 
-// Fee estimates for cross-chain operations (in wei)
+// Cross-chain fee estimates (in wei) - Updated for current testnet conditions
 export const CROSS_CHAIN_FEES = {
+  [avalancheFuji.id]: {
+    [baseSepolia.id]: "1000000000000000000", // 1 AVAX
+    [sepolia.id]: "1200000000000000000", // 1.2 AVAX
+    [arbitrumSepolia.id]: "800000000000000000", // 0.8 AVAX
+  },
   [baseSepolia.id]: {
-    [sepolia.id]: "500000000000000", // 0.0005 ETH
+    [avalancheFuji.id]: "500000000000000", // 0.0005 ETH
+    [sepolia.id]: "400000000000000", // 0.0004 ETH
     [arbitrumSepolia.id]: "300000000000000", // 0.0003 ETH
-    [avalancheFuji.id]: "800000000000000", // 0.0008 ETH
   },
   [sepolia.id]: {
-    [baseSepolia.id]: "500000000000000",
-    [arbitrumSepolia.id]: "400000000000000",
-    [avalancheFuji.id]: "900000000000000",
+    [avalancheFuji.id]: "600000000000000", // 0.0006 ETH
+    [baseSepolia.id]: "400000000000000", // 0.0004 ETH
+    [arbitrumSepolia.id]: "350000000000000", // 0.00035 ETH
   },
   [arbitrumSepolia.id]: {
-    [baseSepolia.id]: "300000000000000",
-    [sepolia.id]: "400000000000000",
-    [avalancheFuji.id]: "700000000000000",
-  },
-  [avalancheFuji.id]: {
-    [baseSepolia.id]: "800000000000000",
-    [sepolia.id]: "900000000000000",
-    [arbitrumSepolia.id]: "700000000000000",
+    [avalancheFuji.id]: "450000000000000", // 0.00045 ETH
+    [baseSepolia.id]: "300000000000000", // 0.0003 ETH
+    [sepolia.id]: "350000000000000", // 0.00035 ETH
   },
 } as const;
 
-// Get estimated cross-chain fee
 export const getCrossChainFee = (
   sourceChainId: number,
   destinationChainId: number
 ): string => {
   const fees = CROSS_CHAIN_FEES[sourceChainId as keyof typeof CROSS_CHAIN_FEES];
-  if (!fees) return "1000000000000000"; // Default 0.001 ETH
+  if (!fees) return "1000000000000000"; // Default fallback
   return (fees as any)[destinationChainId] || "1000000000000000";
 };
+
+// Contract interaction timeouts
+export const TIMEOUTS = {
+  TRANSACTION_CONFIRMATION: 300000, // 5 minutes
+  CROSS_CHAIN_MESSAGE: 600000, // 10 minutes
+  BALANCE_REFRESH: 30000, // 30 seconds
+  ALLOWANCE_REFRESH: 15000, // 15 seconds
+} as const;
+
+// Performance optimization constants
+export const PERFORMANCE_CONFIG = {
+  DEBOUNCE_DELAY: 300,
+  THROTTLE_DELAY: 1000,
+  CACHE_DURATION: 60000, // 1 minute
+  BATCH_SIZE: 10,
+  MAX_RETRIES: 3,
+} as const;
