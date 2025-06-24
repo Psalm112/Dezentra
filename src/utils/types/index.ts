@@ -22,6 +22,9 @@ export interface UserProfile {
   address?: string;
   dateOfBirth?: string;
   phoneNumber?: string;
+  isVerified?: boolean;
+  verificationDate?: string | null;
+  verificationMethod?: string | null;
 }
 
 //product

@@ -10,6 +10,9 @@ import {
   syncProfileWithSelectedUser,
   updateUserProfile,
   updateUserFromAuth,
+  verifySelfIdentity,
+  getSelfVerificationStatus,
+  revokeSelfVerification,
 } from "../../store/slices/userSlice";
 import {
   selectAllUsers,
@@ -155,6 +158,88 @@ export const useUserManagement = () => {
     [dispatch, showSnackbar]
   );
 
+  const verifySelf = useCallback(
+    async (
+      verificationData: {
+        proof: {
+          pi_a: string[];
+          pi_b: string[][];
+          pi_c: string[];
+          protocol: string;
+          curve: string;
+        };
+        publicSignals: string[];
+      },
+      showNotifications = true
+    ) => {
+      try {
+        const updatedProfile = await dispatch(
+          verifySelfIdentity(verificationData)
+        ).unwrap();
+
+        handleUserUpdate(updatedProfile);
+
+        if (showNotifications) {
+          showSnackbar("Identity verified successfully", "success");
+        }
+        return true;
+      } catch (err) {
+        if (showNotifications) {
+          showSnackbar((err as string) || "Failed to verify identity", "error");
+        }
+        return false;
+      }
+    },
+    [dispatch, showSnackbar, handleUserUpdate]
+  );
+
+  const checkVerificationStatus = useCallback(
+    async (showNotifications = false) => {
+      try {
+        await dispatch(getSelfVerificationStatus()).unwrap();
+        if (showNotifications) {
+          showSnackbar("Verification status updated", "success");
+        }
+        return true;
+      } catch (err) {
+        if (showNotifications) {
+          showSnackbar(
+            (err as string) || "Failed to check verification status",
+            "error"
+          );
+        }
+        return false;
+      }
+    },
+    [dispatch, showSnackbar]
+  );
+
+  const revokeVerification = useCallback(
+    async (showNotifications = true) => {
+      try {
+        const updatedProfile = await dispatch(
+          revokeSelfVerification()
+        ).unwrap();
+
+        handleUserUpdate(updatedProfile);
+
+        if (showNotifications) {
+          showSnackbar("Verification revoked successfully", "success");
+        }
+        return true;
+      } catch (err) {
+        if (showNotifications) {
+          showSnackbar(
+            (err as string) || "Failed to revoke verification",
+            "error"
+          );
+        }
+        return false;
+      }
+    },
+    [dispatch, showSnackbar, handleUserUpdate]
+  );
+
   const resetSelectedUser = useCallback(() => {
     dispatch(clearSelectedUser());
   }, [dispatch]);
@@ -171,6 +256,9 @@ export const useUserManagement = () => {
     fetchUserByEmail,
     fetchAllUsers,
     deleteUser,
+    verifySelf,
+    checkVerificationStatus,
+    revokeVerification,
     resetSelectedUser,
     isError: loading === "failed" && error !== null,
     isSuccess: loading === "succeeded",

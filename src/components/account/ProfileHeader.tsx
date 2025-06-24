@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { RiSettings3Fill } from "react-icons/ri";
-import { MdOutlineCheckCircleOutline } from "react-icons/md";
+import { GoVerified, GoUnverified } from "react-icons/go";
 import { useCallback } from "react";
 import { FiCopy } from "react-icons/fi";
 
@@ -10,6 +10,7 @@ interface ProfileHeaderProps {
   email: string;
   id: string;
   showSettings: React.Dispatch<React.SetStateAction<boolean>>;
+  isVerified: boolean;
 }
 
 const ProfileHeader: React.FC<ProfileHeaderProps> = ({
@@ -17,6 +18,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   name,
   email,
   id,
+  isVerified,
   showSettings,
 }) => {
   const handleCopyId = useCallback(() => {
@@ -78,7 +80,25 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           transition={{ delay: 0.4 }}
         >
           <h3 className="text-white text-lg sm:text-xl my-2">{email}</h3>
-          <MdOutlineCheckCircleOutline className="text-[#1FBE42] text-2xl" />
+          {isVerified ? (
+            <div className="relative group">
+              <GoVerified className="text-green-500 text-2xl cursor-help" />
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                Account Verified ✓
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+              </div>
+            </div>
+          ) : (
+            <div className="relative group">
+              <GoUnverified className="text-yellow-500 text-2xl cursor-help" />
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                Account Not Verified
+                <br />
+                Click "Verify Account" button below
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+              </div>
+            </div>
+          )}
         </motion.div>
         {/* <motion.button
           className="flex items-center justify-center gap-1 cursor-pointer"

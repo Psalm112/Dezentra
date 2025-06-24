@@ -136,6 +136,61 @@ export const api = {
       method: "DELETE",
     });
   },
+
+  verifySelfIdentity: async (verificationData: {
+    proof: {
+      pi_a: string[];
+      pi_b: string[][];
+      pi_c: string[];
+      protocol: string;
+      curve: string;
+    };
+    publicSignals: string[];
+  }) => {
+    // Clear cache on verification
+    requestCache.delete(cacheKey("/users/profile"));
+    requestCache.delete(cacheKey("/users/self/status"));
+
+    return fetchWithAuth("/users/verify-self", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(verificationData),
+    });
+  },
+
+  getSelfVerificationStatus: async (skipCache = false) => {
+    const key = cacheKey("/users/self/status");
+    if (!skipCache && requestCache.has(key)) {
+      return requestCache.get(key);
+    }
+
+    if (abortControllers.has(key)) {
+      abortControllers.get(key).abort();
+    }
+
+    const controller = new AbortController();
+    abortControllers.set(key, controller);
+
+    const result = await fetchWithAuth("/users/self/status", {
+      signal: controller.signal,
+    });
+
+    if (result.ok) {
+      requestCache.set(key, result);
+    }
+
+    return result;
+  },
+
+  revokeSelfVerification: async () => {
+    // Clear cache on revocation
+    requestCache.delete(cacheKey("/users/profile"));
+    requestCache.delete(cacheKey("/users/self/status"));
+
+    return fetchWithAuth("/users/self/revoke", {
+      method: "DELETE",
+    });
+  },
   getProducts: async (skipCache = false, preventAbort = false) => {
     const key = cacheKey("/products");
     if (!skipCache && requestCache.has(key)) {

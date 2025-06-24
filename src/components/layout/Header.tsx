@@ -12,6 +12,9 @@ import { useChat } from "../../utils/hooks/useChat";
 import CurrencyToggle from "../common/CurrencyToggle";
 import WalletConnectButton from "../web3/WalletConnectButton";
 import { useWeb3 } from "../../context/Web3Context";
+import { FiInfo } from "react-icons/fi";
+import SefldVerification from "../common/SefldVerification";
+import { useUserManagement } from "../../utils/hooks/useUser";
 
 const NavList = [
   { title: "Home", path: "/" },
@@ -21,14 +24,22 @@ const NavList = [
 ] as const;
 
 const Header = () => {
+  const { selectedUser, checkVerificationStatus } = useUserManagement();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
   const { wallet, disconnectWallet } = useWeb3();
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showWallet, setShowWallet] = useState(false);
+  // const [showWallet, setShowWallet] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const { unreadCount, fetchUserUnreadCount } = useNotifications();
   const { loadConversations, totalUnreadMessages } = useChat();
+
+  useEffect(() => {
+    if (selectedUser?._id) {
+      checkVerificationStatus(false);
+    }
+  }, [selectedUser?._id, checkVerificationStatus]);
 
   const fetchData = useCallback(
     async (silent = false) => {
@@ -121,24 +132,24 @@ const Header = () => {
         <Link
           to="/"
           className="flex items-center group transition-transform hover:scale-105"
-          aria-label="Dezentra Home"
+          aria-label="DezenMart Home"
         >
           <div className="w-8 h-8 md:w-9 md:h-9 relative overflow-hidden">
             <img
               src={FullLogo}
               className="w-full md:hidden transition-transform group-hover:scale-110 object-cover object-[25%_25%]"
-              alt="dezentra logo"
+              alt="dezenmart logo"
               loading="eager"
             />
             <img
               src={Logo}
               className="w-full hidden md:block transition-transform group-hover:scale-110 object-cover object-[25%_25%]"
-              alt="dezentra logo"
+              alt="dezenmart logo"
               loading="eager"
             />
           </div>
           <span className="ml-2 text-white font-medium hidden md:inline transition-opacity group-hover:opacity-90">
-            Dezentra
+            DezenMart
           </span>
         </Link>
 
@@ -209,6 +220,25 @@ const Header = () => {
                     className="w-8 h-8 rounded-full ring-2 ring-[#292B30] hover:ring-Red transition-all"
                     loading="lazy"
                   />
+                  {!user?.isVerified && (
+                    <div className="absolute -top-1 -right-1">
+                      <div className="relative group">
+                        <div className="w-3 h-3 bg-yellow-500 rounded-full flex items-center justify-center">
+                          <FiInfo className="text-black text-xs" />
+                        </div>
+                        <div className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10 max-w-[200px] overflow-hidden">
+                          <div className="font-semibold mb-1">
+                            Account Verification Required
+                          </div>
+                          <div className="text-gray-300">
+                            Complete passport verification to access trading,
+                            withdrawals, and premium features
+                          </div>
+                          <div className="absolute top-full right-2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </button>
 
                 {showUserMenu && (
@@ -224,6 +254,24 @@ const Header = () => {
                     >
                       My Account
                     </button>
+                    {!user?.isVerified && (
+                      <button
+                        onClick={() => setShowVerifyModal(true)}
+                        className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#292B30] transition-colors"
+                        role="menuitem"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>Verify Account</span>
+                          <div className="relative group">
+                            <FiInfo className="text-yellow-500 text-sm cursor-help" />
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+                              Verify your account to unlock all features
+                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    )}
                     <button
                       onClick={handleLogout}
                       className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-[#292B30] transition-colors"
@@ -247,6 +295,10 @@ const Header = () => {
           )}
         </div>
       </Container>
+      <SefldVerification
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+      />
     </header>
   );
 };

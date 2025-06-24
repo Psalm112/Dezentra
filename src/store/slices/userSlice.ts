@@ -159,6 +159,77 @@ export const deleteUserProfile = createAsyncThunk<
   }
 });
 
+export const verifySelfIdentity = createAsyncThunk<
+  UserProfile,
+  {
+    proof: {
+      pi_a: string[];
+      pi_b: string[][];
+      pi_c: string[];
+      protocol: string;
+      curve: string;
+    };
+    publicSignals: string[];
+  },
+  { rejectValue: string }
+>("user/verifySelfIdentity", async (verificationData, { rejectWithValue }) => {
+  try {
+    const response = await api.verifySelfIdentity(verificationData);
+
+    if (!response.ok) {
+      return rejectWithValue(response.error || "Failed to verify identity");
+    }
+
+    return response.data;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "An unknown error occurred";
+    return rejectWithValue(message);
+  }
+});
+
+export const getSelfVerificationStatus = createAsyncThunk<
+  { isVerified: boolean; verificationDate?: string },
+  void,
+  { rejectValue: string }
+>("user/getSelfVerificationStatus", async (_, { rejectWithValue }) => {
+  try {
+    const response = await api.getSelfVerificationStatus();
+
+    if (!response.ok) {
+      return rejectWithValue(
+        response.error || "Failed to get verification status"
+      );
+    }
+
+    return response.data;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "An unknown error occurred";
+    return rejectWithValue(message);
+  }
+});
+
+export const revokeSelfVerification = createAsyncThunk<
+  UserProfile,
+  void,
+  { rejectValue: string }
+>("user/revokeSelfVerification", async (_, { rejectWithValue }) => {
+  try {
+    const response = await api.revokeSelfVerification();
+
+    if (!response.ok) {
+      return rejectWithValue(response.error || "Failed to revoke verification");
+    }
+
+    return response.data;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "An unknown error occurred";
+    return rejectWithValue(message);
+  }
+});
+
 const userSlice = createSlice({
   name: "user",
   initialState,
@@ -281,6 +352,51 @@ const userSlice = createSlice({
         }
       )
       .addCase(deleteUserProfile.rejected, (state, action) => {
+        state.loading = "failed";
+        state.error = (action.payload as string) || "Unknown error occurred";
+      })
+      .addCase(verifySelfIdentity.pending, (state) => {
+        state.loading = "pending";
+        state.error = null;
+      })
+      .addCase(
+        verifySelfIdentity.fulfilled,
+        (state, action: PayloadAction<UserProfile>) => {
+          state.profile = action.payload;
+          state.selectedUser = action.payload;
+          state.loading = "succeeded";
+          state.lastFetched = Date.now();
+        }
+      )
+      .addCase(verifySelfIdentity.rejected, (state, action) => {
+        state.loading = "failed";
+        state.error = (action.payload as string) || "Unknown error occurred";
+      })
+      .addCase(getSelfVerificationStatus.pending, (state) => {
+        state.loading = "pending";
+        state.error = null;
+      })
+      .addCase(getSelfVerificationStatus.fulfilled, (state) => {
+        state.loading = "succeeded";
+      })
+      .addCase(getSelfVerificationStatus.rejected, (state, action) => {
+        state.loading = "failed";
+        state.error = (action.payload as string) || "Unknown error occurred";
+      })
+      .addCase(revokeSelfVerification.pending, (state) => {
+        state.loading = "pending";
+        state.error = null;
+      })
+      .addCase(
+        revokeSelfVerification.fulfilled,
+        (state, action: PayloadAction<UserProfile>) => {
+          state.profile = action.payload;
+          state.selectedUser = action.payload;
+          state.loading = "succeeded";
+          state.lastFetched = Date.now();
+        }
+      )
+      .addCase(revokeSelfVerification.rejected, (state, action) => {
         state.loading = "failed";
         state.error = (action.payload as string) || "Unknown error occurred";
       });

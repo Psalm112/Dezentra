@@ -24,12 +24,12 @@ export const wagmiConfig = createConfig({
   connectors: [
     metaMask({
       dappMetadata: {
-        name: "Dezentra",
+        name: "Dezenmart",
         url: window.location.origin,
       },
     }),
     coinbaseWallet({
-      appName: "Dezentra",
+      appName: "Dezenmart",
       appLogoUrl: `${window.location.origin}/images/logo-full.png`,
     }),
     ...(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
@@ -37,7 +37,7 @@ export const wagmiConfig = createConfig({
           walletConnect({
             projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID,
             metadata: {
-              name: "Dezentra",
+              name: "Dezenmart",
               description:
                 "Decentralized marketplace for secure crypto payments",
               url: window.location.origin,

@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { useWeb3 } from "../../context/Web3Context";
-import { DEZENTRA_ABI } from "../abi/dezentraAbi.json";
+import { DEZENMART_ABI } from "../abi/dezenmartAbi.json";
 import { ESCROW_ADDRESSES } from "../config/web3.config";
 import { useSnackbar } from "../../context/SnackbarContext";
 
@@ -59,7 +59,7 @@ export const useContract = () => {
 
         const hash = await writeContractAsync({
           address: escrowAddress,
-          abi: DEZENTRA_ABI,
+          abi: DEZENMART_ABI,
           functionName: "confirmDelivery",
           args: [purchaseIdBigInt],
         });
@@ -133,7 +133,7 @@ export const useContract = () => {
 
         const hash = await writeContractAsync({
           address: escrowAddress,
-          abi: DEZENTRA_ABI,
+          abi: DEZENMART_ABI,
           functionName: "confirmPurchase",
           args: [purchaseIdBigInt],
         });

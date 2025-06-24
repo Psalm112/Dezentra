@@ -33,7 +33,7 @@ import {
 } from "../utils/config/web3.config";
 import { useSnackbar } from "./SnackbarContext";
 import { useCurrencyConverter } from "../utils/hooks/useCurrencyConverter";
-import { DEZENTRA_ABI } from "../utils/abi/dezentraAbi.json";
+import { DEZENMART_ABI } from "../utils/abi/dezenmartAbi.json";
 import { ESCROW_ADDRESSES } from "../utils/config/web3.config";
 import { parseWeb3Error } from "../utils/errorParser";
 import {
@@ -294,7 +294,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         try {
           const { request } = await simulateContract(wagmiConfig, {
             address: escrowAddress as `0x${string}`,
-            abi: DEZENTRA_ABI,
+            abi: DEZENMART_ABI,
             functionName: "buyTrade",
             args: [tradeId, quantity, logisticsProvider],
             account: address,
@@ -310,7 +310,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
 
         const hash = await writeContractAsync({
           address: escrowAddress as `0x${string}`,
-          abi: DEZENTRA_ABI,
+          abi: DEZENMART_ABI,
           functionName: "buyTrade",
           args: [tradeId, quantity, logisticsProvider],
           gas: gasEstimate,
@@ -333,7 +333,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
               .map((log) => {
                 try {
                   return decodeEventLog({
-                    abi: DEZENTRA_ABI,
+                    abi: DEZENMART_ABI,
                     data: log.data,
                     topics: log.topics,
                   });
@@ -431,7 +431,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const tradeDetails = (await readContract(wagmiConfig, {
           address: escrowAddress as `0x${string}`,
-          abi: DEZENTRA_ABI,
+          abi: DEZENMART_ABI,
           functionName: "getTrade",
           args: [BigInt(tradeId)],
         })) as {

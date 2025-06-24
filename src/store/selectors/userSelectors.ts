@@ -79,3 +79,15 @@ export const selectUserPoints = createSelector([selectUserProfile], (profile) =>
       }
     : { total: 0, available: 0 }
 );
+
+export const selectSelfVerificationStatus = (state: RootState) =>
+  state.user.selectedUser?.isVerified || false;
+
+export const selectUserVerificationDetails = createSelector(
+  [selectSelectedUser],
+  (selectedUser) => ({
+    isVerified: selectedUser?.isVerified || false,
+    verificationDate: selectedUser?.verificationDate || null,
+    verificationMethod: selectedUser?.verificationMethod || null,
+  })
+);

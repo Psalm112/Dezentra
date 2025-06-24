@@ -8,6 +8,8 @@ import {
   HiOutlineInformationCircle,
 } from "react-icons/hi";
 import { Notification } from "../../utils/types";
+import { useState } from "react";
+import NotificationModal from "./NotificationModal";
 
 interface NotificationItemProps {
   notification: Notification;
@@ -15,6 +17,8 @@ interface NotificationItemProps {
 }
 
 const NotificationItem = ({ notification, onRead }: NotificationItemProps) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   const getTimeString = (date: string) => {
     const notificationDate = new Date(date);
     const now = new Date();
@@ -31,14 +35,19 @@ const NotificationItem = ({ notification, onRead }: NotificationItemProps) => {
   };
 
   const handleClick = () => {
+    setIsModalOpen(true);
     if (!notification.read) {
       onRead(notification._id);
     }
   };
 
-  const link = notification.metadata?.orderId
-    ? `/orders/${notification.metadata.orderId}`
-    : undefined;
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+  };
+
+  // const link = notification.metadata?.orderId
+  //   ? `/notifications/type/${notification.metadata._id}`
+  //   : undefined;
 
   const getNotificationIcon = () => {
     switch (notification.type) {
@@ -59,7 +68,7 @@ const NotificationItem = ({ notification, onRead }: NotificationItemProps) => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
       transition={{ duration: 0.3 }}
-      className={`flex items-start p-4 ${
+      className={`flex items-start p-4 cursor-pointer hover:bg-[#333940] transition-colors duration-200 ${
         notification.read ? "bg-[#22252b]" : "bg-[#292B30]"
       }`}
       onClick={handleClick}
@@ -90,21 +99,21 @@ const NotificationItem = ({ notification, onRead }: NotificationItemProps) => {
         </p>
       </div>
 
-      {notification.type === "update" && (
-        <HiChevronRight className="text-gray-400 flex-shrink-0 ml-2 text-lg" />
-      )}
+      <HiChevronRight className="text-gray-400 flex-shrink-0 ml-2 text-lg" />
     </motion.div>
   );
 
-  if (link) {
-    return (
-      <Link to={link} className="block">
-        {itemContent}
-      </Link>
-    );
-  }
-
-  return itemContent;
+  return (
+    <>
+      {itemContent}
+      <NotificationModal
+        notification={notification}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onMarkAsRead={onRead}
+      />
+    </>
+  );
 };
 
 export default NotificationItem;

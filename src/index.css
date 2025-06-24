@@ -1,4 +1,3 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -49,6 +48,7 @@
 @layer base {
   body {
     @apply bg-Dark text-white;
+    overflow-x: hidden;
   }
 }
 

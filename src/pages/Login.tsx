@@ -149,7 +149,7 @@ const Login: React.FC<LoginProps> = ({ isFromReferral = false }) => {
         <div className="flex flex-col gap-8">
           <img
             src={Logo}
-            alt="Dezentra Logo"
+            alt="Dezenmart Logo"
             className="w-[75px] h-[75px] mx-auto"
           />
           {isFromReferral && (

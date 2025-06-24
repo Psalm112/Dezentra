@@ -34,7 +34,7 @@ const Modal: FC<ModalProps> = ({
 
     return () => {
       document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "auto";
+      document.body.style.overflowY = "auto";
     };
   }, [isOpen, onClose]);
 

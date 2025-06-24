@@ -17,6 +17,8 @@
     "@react-md/layout": "^5.1.6",
     "@react-md/tabs": "^5.1.6",
     "@reduxjs/toolkit": "^2.7.0",
+    "@selfxyz/core": "^0.0.25",
+    "@selfxyz/qrcode": "^1.0.8",
     "@tanstack/react-query": "^5.0.0",
     "@wagmi/core": "^2.0.0",
     "@walletconnect/ethereum-provider": "^2.21.0",
@@ -36,6 +38,7 @@
     "react-toastify": "^11.0.5",
     "tailwind-merge": "^3.0.1",
     "thirdweb": "^5.96.5",
+    "uuid": "^11.1.0",
     "viem": "^2.0.0",
     "wagmi": "^2.0.0",
     "web3": "^4.16.0"

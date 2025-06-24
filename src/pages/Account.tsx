@@ -9,6 +9,12 @@ import LoadingSpinner from "../components/common/LoadingSpinner";
 import { useUserManagement } from "../utils/hooks/useUser";
 import { TabOption, TabType } from "../utils/types";
 
+import { useAuth } from "../context/AuthContext";
+
+import { MdOutlineVerifiedUser } from "react-icons/md";
+import Modal from "../components/common/Modal";
+import SefldVerification from "../components/common/SefldVerification";
+
 const TabContent = lazy(
   () => import("../components/account/overview/TabContent")
 );
@@ -54,9 +60,12 @@ const Account = () => {
     fetchProfile,
     isError,
   } = useUserManagement();
+  const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabType>("1");
   const [viewState, setViewState] = useState<AccountViewState>("overview");
+
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   useEffect(() => {
     fetchProfile(false, false);
@@ -152,7 +161,16 @@ const Account = () => {
               id={selectedUser._id}
               email={selectedUser.email}
               showSettings={handleShowSettings}
+              isVerified={selectedUser.isVerified || false}
             />
+            {/* {selfApp && (
+              <div className="my-6">
+                <h3 className="text-lg font-semibold mb-2">
+                  Passport Verification
+                </h3>
+              </div>
+            )} */}
+
             <motion.div
               className="w-full max-w-[650px] mx-auto"
               initial={{ opacity: 0, y: 20 }}
@@ -167,6 +185,21 @@ const Account = () => {
                 className="bg-white text-black text-lg font-bold h-11 rounded-none flex justify-center w-full border-none outline-none text-center my-2 hover:bg-gray-100 transition-colors"
               />
             </motion.div>
+            {!selectedUser.isVerified && (
+              <motion.div
+                className="w-full max-w-[650px] mx-auto"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+              >
+                <Button
+                  title="Verify Account"
+                  icon={<MdOutlineVerifiedUser />}
+                  onClick={() => setShowVerifyModal(true)}
+                  className="bg-Red text-white text-lg font-bold h-11 rounded-none flex justify-center w-full border-none outline-none text-center my-2 hover:bg-[#e02d37] transition-colors"
+                />
+              </motion.div>
+            )}
             <TabNavigation
               activeTab={activeTab}
               onTabChange={setActiveTab}
@@ -189,6 +222,10 @@ const Account = () => {
           </>
         )}
       </Container>
+      <SefldVerification
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+      />
     </div>
   );
 };
