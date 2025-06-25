@@ -26,6 +26,7 @@ import {
   PaymentParams,
   BuyTradeParams,
   TradeDetails,
+  UnifiedBuyTradeParams,
 } from "../utils/types/web3.types";
 import {
   TARGET_CHAIN,
@@ -56,7 +57,7 @@ interface ExtendedWalletState extends WalletState {
 
 interface ExtendedWeb3ContextType extends Omit<Web3ContextType, "wallet"> {
   wallet: ExtendedWalletState;
-  buyTrade: (params: BuyTradeParams) => Promise<PaymentTransaction>;
+  buyTrade: (params: UnifiedBuyTradeParams) => Promise<PaymentTransaction>;
   validateTradeBeforePurchase: (
     tradeId: string,
     quantity: string,
@@ -67,6 +68,10 @@ interface ExtendedWeb3ContextType extends Omit<Web3ContextType, "wallet"> {
   usdtDecimals: number | undefined;
   getTrade: (tradeId: string) => Promise<TradeDetails>;
   refreshBalances: () => Promise<void>;
+  estimateCrossChainFees: (
+    destinationChainSelector: string,
+    payFeesIn: 0 | 1
+  ) => Promise<bigint>;
 }
 
 const Web3Context = createContext<ExtendedWeb3ContextType | undefined>(
@@ -356,9 +361,41 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     [escrowContractAddress]
   );
 
-  // Updated buyTrade function to match new ABI
+  // fee estimation function
+  const estimateCrossChainFees = useCallback(
+    async (
+      destinationChainSelector: string,
+      payFeesIn: 0 | 1
+    ): Promise<bigint> => {
+      if (!escrowContractAddress) {
+        throw new Error("Escrow contract not available");
+      }
+
+      try {
+        // This would typically call a fee estimation function on your contract
+        // For now, we'll use a placeholder - you may need to add this to your ABI
+        const fees = await readContract(wagmiConfig, {
+          address: escrowContractAddress,
+          abi: Dezentra_ABI,
+          functionName: "getFee",
+          args: [
+            BigInt(destinationChainSelector),
+            payFeesIn === 0 ? false : true,
+          ],
+        });
+
+        return fees as bigint;
+      } catch (error) {
+        console.warn("Fee estimation failed, using default:", error);
+        return parseUnits("0.01", 18); // 0.01 ETH/AVAX as default
+      }
+    },
+    [escrowContractAddress]
+  );
+
+  // unified buy trade
   const buyTrade = useCallback(
-    async (params: BuyTradeParams): Promise<PaymentTransaction> => {
+    async (params: UnifiedBuyTradeParams): Promise<PaymentTransaction> => {
       if (!address || !chain?.id) {
         throw new Error("Wallet not connected");
       }
@@ -367,19 +404,18 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         throw new Error("Please switch to the correct network first");
       }
 
-      if (!escrowContractAddress) {
-        throw new Error("Escrow contract not available on this network");
+      if (!escrowContractAddress || !usdtContractAddress) {
+        throw new Error("Contracts not available on this network");
       }
 
-      if (!usdtContractAddress) {
-        throw new Error("USDT contract not available on this network");
-      }
+      const isLocalPurchase = !params.crossChain;
 
       try {
         const tradeId = BigInt(params.tradeId);
         const quantity = BigInt(params.quantity);
         const logisticsProvider = params.logisticsProvider as `0x${string}`;
 
+        // Validate logistics provider address
         if (
           !logisticsProvider?.startsWith("0x") ||
           logisticsProvider.length !== 42
@@ -387,21 +423,48 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
           throw new Error("Invalid logistics provider address");
         }
 
-        // Get trade details to calculate amounts
+        // Get trade details and calculate amounts
         const tradeDetails = await getTrade(params.tradeId);
         const productCost = tradeDetails.productCost as bigint;
         const totalProductCost = productCost * quantity;
 
-        // For this implementation, we'll use USDT as the buyer token
-        // In a production system, you might want to support multiple tokens
         const buyerToken = usdtContractAddress;
         const buyerTokenAmount = totalProductCost;
         const totalAmountInUSDT = totalProductCost;
 
-        // Estimate gas first
         let gasEstimate: bigint;
-        try {
-          const { request } = await simulateContract(wagmiConfig, {
+        let hash: `0x${string}`;
+
+        if (isLocalPurchase) {
+          // Local purchase - same as original implementation
+          try {
+            const { request } = await simulateContract(wagmiConfig, {
+              address: escrowContractAddress,
+              abi: Dezentra_ABI,
+              functionName: "buyTrade",
+              args: [
+                tradeId,
+                quantity,
+                logisticsProvider,
+                buyerToken,
+                buyerTokenAmount,
+                totalAmountInUSDT,
+              ],
+              account: address,
+            });
+
+            gasEstimate = request.gas
+              ? (request.gas * BigInt(120)) / BigInt(100)
+              : GAS_LIMITS.BUY_TRADE;
+          } catch (estimateError) {
+            console.warn(
+              "Gas estimation failed, using default:",
+              estimateError
+            );
+            gasEstimate = GAS_LIMITS.BUY_TRADE;
+          }
+
+          hash = await writeContractAsync({
             address: escrowContractAddress,
             abi: Dezentra_ABI,
             functionName: "buyTrade",
@@ -413,42 +476,107 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
               buyerTokenAmount,
               totalAmountInUSDT,
             ],
-            account: address,
+            gas: gasEstimate,
           });
+        } else {
+          // Cross-chain purchase
+          if (!params.crossChain) {
+            throw new Error(
+              "Cross-chain parameters are required for cross-chain purchase"
+            );
+          }
 
-          gasEstimate = request.gas
-            ? (request.gas * BigInt(120)) / BigInt(100)
-            : GAS_LIMITS.BUY_TRADE;
-        } catch (estimateError) {
-          console.warn("Gas estimation failed, using default:", estimateError);
-          gasEstimate = GAS_LIMITS.BUY_TRADE;
+          const {
+            destinationChainSelector,
+            destinationContract,
+            payFeesIn = 1, // Default to native token
+          } = params.crossChain;
+
+          const destChainSelector = BigInt(destinationChainSelector);
+          const destContract = destinationContract as `0x${string}`;
+
+          // Validate destination contract address
+          if (!destContract?.startsWith("0x") || destContract.length !== 42) {
+            throw new Error("Invalid destination contract address");
+          }
+
+          // Estimate cross-chain fees
+          let crossChainFees: bigint;
+          try {
+            crossChainFees = await estimateCrossChainFees(
+              destinationChainSelector,
+              payFeesIn
+            );
+          } catch (error) {
+            console.warn("Cross-chain fee estimation failed:", error);
+            crossChainFees = parseUnits("0.01", 18); // Default fee
+          }
+
+          // Gas estimation for cross-chain transaction
+          try {
+            const { request } = await simulateContract(wagmiConfig, {
+              address: escrowContractAddress,
+              abi: Dezentra_ABI,
+              functionName: "buyCrossChainTrade",
+              args: [
+                destChainSelector,
+                destContract,
+                tradeId,
+                quantity,
+                logisticsProvider,
+                buyerToken,
+                buyerTokenAmount,
+                totalAmountInUSDT,
+                payFeesIn,
+              ],
+              account: address,
+              value: payFeesIn === 1 ? crossChainFees : 0n, // Pay fees in native token if selected
+            });
+
+            gasEstimate = request.gas
+              ? (request.gas * BigInt(130)) / BigInt(100) // Higher buffer for cross-chain
+              : GAS_LIMITS.BUY_TRADE * BigInt(2);
+          } catch (estimateError) {
+            console.warn(
+              "Cross-chain gas estimation failed, using default:",
+              estimateError
+            );
+            gasEstimate = GAS_LIMITS.BUY_TRADE * BigInt(2);
+          }
+
+          hash = await writeContractAsync({
+            address: escrowContractAddress,
+            abi: Dezentra_ABI,
+            functionName: "buyCrossChainTrade",
+            args: [
+              destChainSelector,
+              destContract,
+              tradeId,
+              quantity,
+              logisticsProvider,
+              buyerToken,
+              buyerTokenAmount,
+              totalAmountInUSDT,
+              payFeesIn,
+            ],
+            gas: gasEstimate,
+            value: payFeesIn === 1 ? crossChainFees : 0n,
+          });
         }
-
-        const hash = await writeContractAsync({
-          address: escrowContractAddress,
-          abi: Dezentra_ABI,
-          functionName: "buyTrade",
-          args: [
-            tradeId,
-            quantity,
-            logisticsProvider,
-            buyerToken,
-            buyerTokenAmount,
-            totalAmountInUSDT,
-          ],
-          gas: gasEstimate,
-        });
 
         if (!hash) {
           throw new Error("Transaction failed to execute");
         }
 
+        // Wait for transaction receipt
         const receipt = await waitForTransactionReceipt(wagmiConfig, {
           hash,
-          timeout: 60000,
+          timeout: isLocalPurchase ? 60000 : 120000, // Longer timeout for cross-chain
         });
 
+        // Parse events for purchase ID and cross-chain message ID
         let purchaseId: string | undefined;
+        let messageId: string | undefined;
 
         if (receipt.logs) {
           try {
@@ -466,6 +594,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
               })
               .filter(Boolean);
 
+            // Look for PurchaseCreated event
             const purchaseCreatedEvent = decodedLogs.find(
               (event: any) => event?.eventName === "PurchaseCreated"
             );
@@ -474,15 +603,37 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
               const args = purchaseCreatedEvent.args as any;
               purchaseId = args.purchaseId?.toString();
             }
+
+            // Look for MessageSent event (cross-chain only)
+            if (!isLocalPurchase) {
+              const messageSentEvent = decodedLogs.find(
+                (event: any) => event?.eventName === "MessageSent"
+              );
+
+              if (messageSentEvent?.args) {
+                const args = messageSentEvent.args as any;
+                messageId = args.messageId;
+              }
+            }
           } catch (error) {
             console.warn("Failed to decode event logs:", error);
           }
         }
 
+        // Show appropriate success message
+        const successMessage = isLocalPurchase
+          ? "Purchase successful!"
+          : "Cross-chain purchase initiated! Your transaction is being processed.";
+
+        showSnackbar(successMessage, "success");
+
         // Refresh balances after successful transaction
-        setTimeout(() => {
-          refreshBalances();
-        }, 2000);
+        setTimeout(
+          () => {
+            refreshBalances();
+          },
+          isLocalPurchase ? 2000 : 5000
+        ); // Longer delay for cross-chain
 
         return {
           hash,
@@ -493,13 +644,23 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
           status: "pending",
           timestamp: Date.now(),
           purchaseId,
+          messageId, // Include message ID for cross-chain tracking
+          crossChain: !isLocalPurchase,
         };
       } catch (error: any) {
         console.error("Buy trade failed:", error);
 
-        // Enhanced error parsing for new contract errors
         const errorMessage = error?.message || error?.toString() || "";
 
+        // Enhanced error handling for both local and cross-chain scenarios
+        if (errorMessage.includes("InsufficientFeeTokenAmount")) {
+          throw new Error("Insufficient funds for cross-chain fees");
+        }
+        if (errorMessage.includes("SourceChainNotAllowlisted")) {
+          throw new Error(
+            "Cross-chain purchases not supported from this network"
+          );
+        }
         if (errorMessage.includes("InsufficientTokenBalance")) {
           throw new Error("Insufficient USDT balance for this purchase");
         }
@@ -519,28 +680,14 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         if (errorMessage.includes("InsufficientQuantity")) {
           throw new Error("Requested quantity exceeds available stock");
         }
-        if (errorMessage.includes("InvalidQuantity")) {
-          throw new Error("Invalid quantity specified");
-        }
         if (errorMessage.includes("InvalidLogisticsProvider")) {
           throw new Error("Invalid logistics provider selected");
         }
         if (errorMessage.includes("BuyerIsSeller")) {
           throw new Error("Cannot purchase your own product");
         }
-        if (errorMessage.includes("InvalidTradeState")) {
-          throw new Error("Trade is not in a valid state for purchase");
-        }
-        if (
-          errorMessage.includes("User rejected") ||
-          errorMessage.includes("user rejected")
-        ) {
+        if (errorMessage.includes("User rejected")) {
           throw new Error("Transaction was rejected by user");
-        }
-        if (errorMessage.includes("Internal JSON-RPC error")) {
-          throw new Error(
-            "Network error. Please check your connection and try again"
-          );
         }
         if (errorMessage.includes("gas")) {
           throw new Error(
@@ -548,7 +695,11 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
           );
         }
 
-        throw new Error("Transaction failed. Please try again.");
+        const errorPrefix = isLocalPurchase
+          ? "Purchase failed"
+          : "Cross-chain purchase failed";
+
+        throw new Error(`${errorPrefix}. Please try again.`);
       }
     },
     [
@@ -561,6 +712,8 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
       getTrade,
       usdtDecimals,
       refreshBalances,
+      estimateCrossChainFees,
+      showSnackbar,
     ]
   );
 
@@ -774,6 +927,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     validateTradeBeforePurchase,
     getTrade,
     refreshBalances,
+    estimateCrossChainFees,
     isCorrectNetwork,
   };
 

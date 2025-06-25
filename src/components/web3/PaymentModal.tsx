@@ -12,6 +12,7 @@ import {
 import Modal from "../common/Modal";
 import Button from "../common/Button";
 import { useWeb3 } from "../../context/Web3Context";
+import { useSmartContract } from "../../utils/hooks/useSmartContract";
 import { PaymentTransaction } from "../../utils/types/web3.types";
 import { formatCurrency } from "../../utils/web3.utils";
 import { useSnackbar } from "../../context/SnackbarContext";
@@ -25,19 +26,14 @@ interface PaymentModalProps {
   onPaymentSuccess: (transaction: PaymentTransaction) => void;
 }
 
-type PaymentStep =
-  | "review"
-  | "processing"
-  | "success"
-  | "error"
-  | "cross-chain-processing";
+type PaymentStep = "review" | "processing" | "success" | "error";
 
 interface ChainInfo {
   chainId: number;
   name: string;
   shortName: string;
   nativeCurrency: string;
-  isCrossChain: boolean;
+  chainSelector?: string;
 }
 
 const SUPPORTED_CHAINS: Record<number, ChainInfo> = {
@@ -46,28 +42,28 @@ const SUPPORTED_CHAINS: Record<number, ChainInfo> = {
     name: "Avalanche Fuji",
     shortName: "AVAX",
     nativeCurrency: "AVAX",
-    isCrossChain: false,
+    chainSelector: "16015286601757825753",
   },
   11155111: {
     chainId: 11155111,
     name: "Sepolia",
     shortName: "ETH",
     nativeCurrency: "ETH",
-    isCrossChain: true,
+    chainSelector: "16281711391670634445",
   },
   84532: {
     chainId: 84532,
     name: "Base Sepolia",
     shortName: "BASE",
     nativeCurrency: "ETH",
-    isCrossChain: true,
+    chainSelector: "10344971235874465080",
   },
   421614: {
     chainId: 421614,
     name: "Arbitrum Sepolia",
     shortName: "ARB",
     nativeCurrency: "ETH",
-    isCrossChain: true,
+    chainSelector: "3478487238524512106",
   },
 };
 
@@ -81,7 +77,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const {
     wallet,
     buyTrade,
-    buyCrossChainTrade,
     approveUSDT,
     getUSDTBalance,
     isCorrectNetwork,
@@ -89,17 +84,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     getCurrentAllowance,
     connectWallet,
     validateTradeBeforePurchase,
-    getSupportedDestinationChains,
-    estimateCCIPFees,
   } = useWeb3();
+
+  const { getSupportedChains } = useSmartContract();
 
   const [step, setStep] = useState<PaymentStep>("review");
   const [needsApproval, setNeedsApproval] = useState(false);
-  const [approvalHash, setApprovalHash] = useState<string>("");
   const [transaction, setTransaction] = useState<PaymentTransaction | null>(
     null
   );
-  const [usdtBalance, setUsdtBalance] = useState<string>("0");
   const [error, setError] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -107,9 +100,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [selectedDestinationChain, setSelectedDestinationChain] = useState<
     number | null
   >(null);
-  const [ccipFees, setCcipFees] = useState<string>("0");
-  const [isLoadingFees, setIsLoadingFees] = useState(false);
-  const [crossChainMessageId, setCrossChainMessageId] = useState<string>("");
+  const [availableChains, setAvailableChains] = useState<ChainInfo[]>([]);
+  const [isLoadingChains, setIsLoadingChains] = useState(true);
 
   const currentChain = useMemo(() => {
     return wallet.chainId ? SUPPORTED_CHAINS[wallet.chainId] : null;
@@ -136,12 +128,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     );
   }, [orderDetails]);
 
-  const totalPaymentAmount = useMemo(() => {
-    return isCrossChainPayment
-      ? orderAmount + parseFloat(ccipFees)
-      : orderAmount;
-  }, [orderAmount, ccipFees, isCrossChainPayment]);
-
   const balanceNumber = useMemo(() => {
     if (!wallet.usdtBalance?.raw) return 0;
     return parseFloat(wallet.usdtBalance.raw);
@@ -153,62 +139,58 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   );
 
   const hasInsufficientBalance = useMemo(
-    () => balanceNumber < totalPaymentAmount,
-    [balanceNumber, totalPaymentAmount]
+    () => balanceNumber < orderAmount,
+    [balanceNumber, orderAmount]
   );
-
   const hasInsufficientGas = useMemo(() => gasBalance < 0.01, [gasBalance]);
 
-  // Initialize destination chain selection
+  // Load supported chains on mount
   useEffect(() => {
-    if (isOpen && !selectedDestinationChain) {
-      // Default to Avalanche Fuji for local payments
-      setSelectedDestinationChain(43113);
-    }
-  }, [isOpen, selectedDestinationChain]);
+    const loadSupportedChains = async () => {
+      if (!isOpen) return;
 
-  // Estimate CCIP fees when cross-chain payment is selected
-  useEffect(() => {
-    const estimateFees = async () => {
-      if (!isCrossChainPayment || !estimateCCIPFees) return;
-
-      setIsLoadingFees(true);
+      setIsLoadingChains(true);
       try {
-        const fees = await estimateCCIPFees(
-          selectedDestinationChain!,
-          orderDetails.product.tradeId,
-          orderDetails.quantity.toString(),
-          orderAmount.toString()
-        );
-        setCcipFees(fees);
+        const chains = await getSupportedChains();
+        const mappedChains = chains
+          .map((chainInfo) => SUPPORTED_CHAINS[chainInfo.chainId])
+          .filter(Boolean);
+
+        setAvailableChains(mappedChains);
+
+        // Default to current chain if available, otherwise Avalanche Fuji
+        if (!selectedDestinationChain) {
+          const defaultChain =
+            mappedChains.find((chain) => chain.chainId === wallet.chainId) ||
+            mappedChains.find((chain) => chain.chainId === 43113) ||
+            mappedChains[0];
+          if (defaultChain) {
+            setSelectedDestinationChain(defaultChain.chainId);
+          }
+        }
       } catch (error) {
-        console.error("Failed to estimate CCIP fees:", error);
-        setCcipFees("0.1"); // Fallback estimate
-        showSnackbar("Failed to estimate cross-chain fees", "warning");
+        console.error("Failed to load supported chains:", error);
+        // Fallback to all chains
+        setAvailableChains(Object.values(SUPPORTED_CHAINS));
+        if (!selectedDestinationChain) {
+          setSelectedDestinationChain(43113);
+        }
       } finally {
-        setIsLoadingFees(false);
+        setIsLoadingChains(false);
       }
     };
 
-    estimateFees();
-  }, [
-    isCrossChainPayment,
-    selectedDestinationChain,
-    orderAmount,
-    orderDetails,
-    estimateCCIPFees,
-  ]);
+    loadSupportedChains();
+  }, [isOpen, getSupportedChains, wallet.chainId, selectedDestinationChain]);
 
   const loadBalance = useCallback(async () => {
     if (!wallet.isConnected) return;
 
     setIsLoadingBalance(true);
     try {
-      const balance = await getUSDTBalance();
-      setUsdtBalance(balance);
+      await getUSDTBalance();
     } catch (error) {
       console.error("Failed to load balance:", error);
-      setUsdtBalance("0");
       showSnackbar("Failed to load balance", "error");
     } finally {
       setIsLoadingBalance(false);
@@ -220,17 +202,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
     try {
       const allowance = await getCurrentAllowance();
-      setNeedsApproval(allowance < totalPaymentAmount);
+      setNeedsApproval(allowance < orderAmount);
     } catch (error) {
       console.error("Failed to check allowance:", error);
       setNeedsApproval(true);
     }
-  }, [
-    wallet.isConnected,
-    isCorrectNetwork,
-    getCurrentAllowance,
-    totalPaymentAmount,
-  ]);
+  }, [wallet.isConnected, isCorrectNetwork, getCurrentAllowance, orderAmount]);
 
   useEffect(() => {
     if (isOpen && wallet.isConnected) {
@@ -244,10 +221,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       setStep("review");
       setError("");
       setTransaction(null);
-      setApprovalHash("");
       setRetryCount(0);
       setIsProcessing(false);
-      setCrossChainMessageId("");
     }
   }, [isOpen]);
 
@@ -281,7 +256,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     if (hasInsufficientBalance) {
       setError(
         `Insufficient USDT balance. Required: ${formatCurrency(
-          totalPaymentAmount
+          orderAmount
         )} USDT`
       );
       setStep("error");
@@ -299,7 +274,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
     try {
       setIsProcessing(true);
-      setStep(isCrossChainPayment ? "cross-chain-processing" : "processing");
+      setStep("processing");
       setError("");
 
       // Validate trade before purchase
@@ -320,10 +295,9 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         showSnackbar("Requesting USDT spending approval...", "info");
 
         try {
-          const approvalTx = await approveUSDT(totalPaymentAmount.toString());
+          const approvalTx = await approveUSDT(orderAmount.toString());
 
           if (approvalTx !== "0x0") {
-            setApprovalHash(approvalTx);
             showSnackbar(
               "USDT approval submitted. Waiting for confirmation...",
               "info"
@@ -339,7 +313,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
               try {
                 const newAllowance = await getCurrentAllowance();
-                if (newAllowance >= totalPaymentAmount) {
+                if (newAllowance >= orderAmount) {
                   confirmed = true;
                   break;
                 }
@@ -366,37 +340,25 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Execute payment based on type
-      let paymentTransaction: PaymentTransaction;
-
-      if (isCrossChainPayment && buyCrossChainTrade) {
-        showSnackbar("Processing cross-chain purchase...", "info");
-
-        paymentTransaction = await buyCrossChainTrade({
-          tradeId: orderDetails.product.tradeId,
-          quantity: orderDetails.quantity.toString(),
-          logisticsProvider: orderDetails.logisticsProviderWalletAddress[0],
+      // Prepare buy trade parameters
+      const buyTradeParams = {
+        tradeId: orderDetails.product.tradeId,
+        quantity: orderDetails.quantity.toString(),
+        logisticsProvider: orderDetails.logisticsProviderWalletAddress[0],
+        ...(isCrossChainPayment && {
           destinationChainSelector: selectedDestinationChain!,
-        });
+          isCrossChain: true,
+        }),
+      };
 
-        // Set cross-chain message ID if available
-        if (paymentTransaction.ccipMessageId) {
-          setCrossChainMessageId(paymentTransaction.ccipMessageId);
-        }
+      showSnackbar(
+        isCrossChainPayment
+          ? "Processing cross-chain purchase..."
+          : "Processing local purchase...",
+        "info"
+      );
 
-        showSnackbar(
-          "Cross-chain purchase initiated! Waiting for confirmation...",
-          "info"
-        );
-      } else {
-        showSnackbar("Processing local purchase...", "info");
-
-        paymentTransaction = await buyTrade({
-          tradeId: orderDetails.product.tradeId,
-          quantity: orderDetails.quantity.toString(),
-          logisticsProvider: orderDetails.logisticsProviderWalletAddress[0],
-        });
-      }
+      const paymentTransaction = await buyTrade(buyTradeParams);
 
       setTransaction(paymentTransaction);
       setStep("success");
@@ -440,7 +402,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     hasInsufficientGas,
     needsApproval,
     orderDetails,
-    totalPaymentAmount,
+    orderAmount,
     currentChain,
     isCrossChainPayment,
     selectedDestinationChain,
@@ -448,7 +410,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     switchToCorrectNetwork,
     approveUSDT,
     buyTrade,
-    buyCrossChainTrade,
     getCurrentAllowance,
     onPaymentSuccess,
     showSnackbar,
@@ -461,17 +422,12 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     setStep("review");
     setError("");
     setIsProcessing(false);
-    setApprovalHash("");
-    setCrossChainMessageId("");
     loadBalance();
     checkApprovalNeeds();
   }, [loadBalance, checkApprovalNeeds]);
 
   const handleModalClose = useCallback(() => {
-    if (
-      (step === "processing" || step === "cross-chain-processing") &&
-      isProcessing
-    ) {
+    if (step === "processing" && isProcessing) {
       showSnackbar(
         "Transaction in progress. Please wait for completion before closing.",
         "info"
@@ -482,28 +438,35 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   }, [step, isProcessing, onClose, showSnackbar]);
 
   const displayBalance = useMemo(() => {
-    return wallet.usdtBalance?.usdt || `${usdtBalance} USDT`;
-  }, [wallet.usdtBalance?.usdt, usdtBalance]);
+    return wallet.usdtBalance?.usdt || "0 USDT";
+  }, [wallet.usdtBalance?.usdt]);
 
   const renderDestinationChainSelector = () => (
     <div className="space-y-3">
       <h3 className="text-lg font-semibold text-white">Destination Chain</h3>
-      <div className="grid grid-cols-2 gap-2">
-        {Object.values(SUPPORTED_CHAINS).map((chain) => (
-          <button
-            key={chain.chainId}
-            onClick={() => setSelectedDestinationChain(chain.chainId)}
-            className={`p-3 rounded-lg border transition-all ${
-              selectedDestinationChain === chain.chainId
-                ? "border-Red bg-Red/20 text-Red"
-                : "border-Red/20 bg-Dark/50 text-gray-300 hover:border-Red/40"
-            }`}
-          >
-            <div className="text-sm font-medium">{chain.name}</div>
-            <div className="text-xs opacity-75">{chain.shortName}</div>
-          </button>
-        ))}
-      </div>
+      {isLoadingChains ? (
+        <div className="flex items-center justify-center py-4">
+          <div className="w-5 h-5 border-2 border-Red/30 border-t-Red rounded-full animate-spin" />
+          <span className="ml-2 text-gray-400">Loading chains...</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {availableChains.map((chain) => (
+            <button
+              key={chain.chainId}
+              onClick={() => setSelectedDestinationChain(chain.chainId)}
+              className={`p-3 rounded-lg border transition-all ${
+                selectedDestinationChain === chain.chainId
+                  ? "border-Red bg-Red/20 text-Red"
+                  : "border-Red/20 bg-Dark/50 text-gray-300 hover:border-Red/40"
+              }`}
+            >
+              <div className="text-sm font-medium">{chain.name}</div>
+              <div className="text-xs opacity-75">{chain.shortName}</div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -522,14 +485,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   <HiArrowPath className="w-4 h-4 text-blue-400" />
                   <span className="text-blue-400 font-medium">
                     Cross-Chain Payment
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-300">CCIP Fee:</span>
-                  <span className="text-white">
-                    {isLoadingFees
-                      ? "Calculating..."
-                      : `${formatCurrency(ccipFees)} USDT`}
                   </span>
                 </div>
                 <p className="text-xs text-blue-400/80">
@@ -553,19 +508,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     {formatCurrency(orderAmount)} USDT
                   </span>
                 </div>
-                {isCrossChainPayment && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-300">Cross-chain Fee</span>
-                    <span className="text-white font-medium">
-                      {formatCurrency(ccipFees)} USDT
-                    </span>
-                  </div>
-                )}
                 <div className="border-t border-Red/20 pt-3">
                   <div className="flex justify-between text-lg font-bold">
                     <span className="text-white">Total</span>
                     <span className="text-Red">
-                      {formatCurrency(totalPaymentAmount)} USDT
+                      {formatCurrency(orderAmount)} USDT
                     </span>
                   </div>
                 </div>
@@ -661,7 +608,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       <HiExclamationTriangle className="w-4 h-4 text-red-400" />
                       <span className="text-red-400 text-sm">
                         Insufficient USDT balance. Need{" "}
-                        {formatCurrency(totalPaymentAmount)} USDT
+                        {formatCurrency(orderAmount)} USDT
                       </span>
                     </div>
                   </div>
@@ -707,16 +654,14 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 !wallet.isConnected
                   ? "Connect Wallet"
                   : isCrossChainPayment
-                  ? `Pay ${formatCurrency(
-                      totalPaymentAmount
-                    )} USDT (Cross-Chain)`
-                  : `Pay ${formatCurrency(totalPaymentAmount)} USDT`
+                  ? `Pay ${formatCurrency(orderAmount)} USDT (Cross-Chain)`
+                  : `Pay ${formatCurrency(orderAmount)} USDT`
               }
               onClick={handlePayment}
               disabled={
                 isProcessing ||
                 isLoadingBalance ||
-                isLoadingFees ||
+                isLoadingChains ||
                 (wallet.isConnected &&
                   (hasInsufficientBalance || hasInsufficientGas))
               }
@@ -726,7 +671,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         );
 
       case "processing":
-      case "cross-chain-processing":
         return (
           <div className="text-center space-y-6 py-12">
             <div className="relative">
@@ -735,21 +679,21 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             </div>
             <div className="space-y-3">
               <h3 className="text-xl font-bold text-white">
-                {step === "cross-chain-processing"
+                {isCrossChainPayment
                   ? "Processing Cross-Chain Payment"
                   : "Processing Payment"}
               </h3>
               <p className="text-gray-300 max-w-sm mx-auto">
-                {needsApproval && !approvalHash
+                {needsApproval
                   ? "Requesting USDT spending permission..."
-                  : step === "cross-chain-processing"
+                  : isCrossChainPayment
                   ? "Initiating secure cross-chain transaction..."
                   : "Completing your purchase transaction..."}
               </p>
               <p className="text-sm text-gray-400">
                 Please confirm the transaction in your wallet
               </p>
-              {step === "cross-chain-processing" && (
+              {isCrossChainPayment && (
                 <p className="text-xs text-blue-400">
                   Cross-chain transactions may take a few minutes to complete
                 </p>
@@ -796,13 +740,13 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                       {transaction.hash}
                     </p>
                   </div>
-                  {crossChainMessageId && (
+                  {transaction.ccipMessageId && (
                     <div>
                       <p className="text-sm text-gray-400 mb-1">
                         CCIP Message ID:
                       </p>
                       <p className="font-mono text-xs text-blue-400 break-all">
-                        {crossChainMessageId}
+                        {transaction.ccipMessageId}
                       </p>
                     </div>
                   )}

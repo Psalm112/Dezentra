@@ -18,6 +18,8 @@ export interface PaymentTransaction {
   gasUsed?: string;
   gasPrice?: string;
   purchaseId?: string;
+  messageId?: string;
+  crossChain?: boolean;
 }
 
 export interface EscrowPayment {
@@ -95,5 +97,19 @@ export interface ChainMetadata {
     color: string;
     nativeCurrency: string;
     blockExplorer: string;
+  };
+}
+
+export interface CrossChainPurchaseParams extends BuyTradeParams {
+  destinationChainSelector: string;
+  destinationContract: string;
+  payFeesIn?: 0 | 1; // 0 for LINK, 1 for native token
+}
+
+export interface UnifiedBuyTradeParams extends BuyTradeParams {
+  crossChain?: {
+    destinationChainSelector: string;
+    destinationContract: string;
+    payFeesIn?: 0 | 1;
   };
 }
