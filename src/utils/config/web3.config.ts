@@ -1,4 +1,3 @@
-// src/utils/config/web3.config.ts
 import { http, createConfig, fallback } from "wagmi";
 import {
   baseSepolia,
@@ -8,7 +7,7 @@ import {
 } from "wagmi/chains";
 import { coinbaseWallet, metaMask, walletConnect } from "wagmi/connectors";
 
-// RPC endpoints with fallbacks for better reliability
+// RPC endpoints with fallbacks
 const rpcEndpoints = {
   [avalancheFuji.id]: [
     "https://api.avax-test.network/ext/bc/C/rpc",
@@ -34,7 +33,7 @@ const rpcEndpoints = {
   ],
 } as const;
 
-// Contract addresses - Updated for hackathon deployment
+// Contract addresses
 export const USDT_ADDRESSES = {
   [avalancheFuji.id]: import.meta.env
     .VITE_USDT_CONTRACT_ADDRESS_AVALANCHE_FUJI!,
@@ -50,7 +49,7 @@ export const ESCROW_ADDRESSES = {
   [arbitrumSepolia.id]: import.meta.env.VITE_ESCROW_CONTRACT_ARB_SEPOLIA!,
 } as const;
 
-// CCIP Router addresses (official Chainlink addresses)
+// CCIP Router addresses
 export const CCIP_ROUTER_ADDRESSES = {
   [avalancheFuji.id]: "0xF694E193200268f9a4868e4Aa017A0118C9a8177",
   [baseSepolia.id]: "0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93",
@@ -58,7 +57,7 @@ export const CCIP_ROUTER_ADDRESSES = {
   [arbitrumSepolia.id]: "0x2a9C5afB0d0e4BAb2BCdaE109EC4b0c4Be15a165",
 } as const;
 
-// CCIP Chain selectors (official Chainlink selectors)
+// CCIP Chain selectors
 export const CCIP_CHAIN_SELECTORS = {
   [avalancheFuji.id]: "14767482510784806043",
   [baseSepolia.id]: "10344971235874465080",
@@ -105,7 +104,7 @@ export const CHAIN_METADATA = {
 // Primary chain for hackathon - Avalanche Fuji
 export const TARGET_CHAIN = avalancheFuji;
 
-// Supported chains ordered by preference
+// Supported chains
 export const SUPPORTED_CHAINS = [
   avalancheFuji,
   baseSepolia,
@@ -143,7 +142,7 @@ export const getChainMetadata = (chainId: number) => {
   return CHAIN_METADATA[chainId as keyof typeof CHAIN_METADATA];
 };
 
-// Optimized Wagmi configuration
+// Wagmi configuration
 export const wagmiConfig = createConfig({
   chains: SUPPORTED_CHAINS as any,
   connectors: [
@@ -204,7 +203,7 @@ export const wagmiConfig = createConfig({
   pollingInterval: 4000,
 });
 
-// Gas limits optimized for contract operations
+// Gas limits
 export const GAS_LIMITS = {
   APPROVE: 100000n,
   BUY_TRADE: 800000n,
@@ -223,7 +222,7 @@ export const GAS_LIMITS = {
   REGISTER_LOGISTICS_PROVIDER: 100000n,
 } as const;
 
-// Cross-chain fee estimates (in wei) - Updated for current testnet conditions
+// Cross-chain fee estimates (in wei)
 export const CROSS_CHAIN_FEES = {
   [avalancheFuji.id]: {
     [baseSepolia.id]: "1000000000000000000", // 1 AVAX
@@ -252,7 +251,7 @@ export const getCrossChainFee = (
   destinationChainId: number
 ): string => {
   const fees = CROSS_CHAIN_FEES[sourceChainId as keyof typeof CROSS_CHAIN_FEES];
-  if (!fees) return "1000000000000000"; // Default fallback
+  if (!fees) return "1000000000000000";
   return (fees as any)[destinationChainId] || "1000000000000000";
 };
 

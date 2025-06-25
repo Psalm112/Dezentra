@@ -67,8 +67,8 @@ export interface TradeDetails {
   totalQuantity: bigint;
   remainingQuantity: bigint;
   active: boolean;
-  logisticsProviders: string[];
-  logisticsCosts: bigint[];
+  // logisticsProviders: string[];
+  // logisticsCosts: bigint[];
 }
 
 export interface PaymentOrderDetails {

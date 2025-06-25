@@ -1,185 +1,308 @@
 import { useCallback } from "react";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { useWeb3 } from "../../context/Web3Context";
+import { useAccount, useReadContract, useWriteContract } from "wagmi";
+import {
+  readContract,
+  simulateContract,
+  waitForTransactionReceipt,
+} from "@wagmi/core";
 import { Dezentra_ABI } from "../abi/dezenmartAbi.json";
-import { ESCROW_ADDRESSES } from "../config/web3.config";
+import {
+  ESCROW_ADDRESSES,
+  wagmiConfig,
+  GAS_LIMITS,
+} from "../config/web3.config";
 import { useSnackbar } from "../../context/SnackbarContext";
+import { parseWeb3Error } from "../errorParser";
 
-interface ContractResult {
-  success: boolean;
-  message?: string;
-  hash?: string;
+interface ChainInfo {
+  chainSelector: string;
+  chainId: number;
+  name: string;
 }
 
-export const useContract = () => {
-  const { wallet, switchToCorrectNetwork, isCorrectNetwork } = useWeb3();
+interface SmartContractResult {
+  hash: string;
+  timestamp: number;
+  status: "pending" | "success" | "failed";
+}
+
+export const useSmartContract = () => {
+  const { address, chain } = useAccount();
   const { writeContractAsync } = useWriteContract();
   const { showSnackbar } = useSnackbar();
 
-  const getEscrowAddress = useCallback(() => {
-    if (!wallet.chainId) {
-      throw new Error("Wallet not connected");
-    }
+  const escrowContractAddress = ESCROW_ADDRESSES[
+    chain?.id as keyof typeof ESCROW_ADDRESSES
+  ] as `0x${string}` | undefined;
 
-    const escrowAddress =
-      ESCROW_ADDRESSES[wallet.chainId as keyof typeof ESCROW_ADDRESSES];
-    if (!escrowAddress) {
-      throw new Error("Escrow contract not available on this network");
-    }
-
-    return escrowAddress as `0x${string}`;
-  }, [wallet.chainId]);
-
+  // Confirm delivery function
   const confirmDelivery = useCallback(
-    async (purchaseId: string): Promise<ContractResult> => {
+    async (purchaseId: string): Promise<SmartContractResult> => {
+      if (!address || !chain?.id) {
+        throw new Error("Wallet not connected");
+      }
+
+      if (!escrowContractAddress) {
+        throw new Error("Escrow contract not available on this network");
+      }
+
       try {
-        if (!wallet.isConnected || !wallet.address) {
-          return {
-            success: false,
-            message: "Please connect your wallet first",
-          };
+        // Validate purchase exists and is in correct state
+        const purchaseDetails = await readContract(wagmiConfig, {
+          address: escrowContractAddress,
+          abi: Dezentra_ABI,
+          functionName: "purchases",
+          args: [BigInt(purchaseId)],
+        });
+
+        if (!purchaseDetails || (purchaseDetails as any).purchaseId === 0n) {
+          throw new Error("Purchase not found");
         }
 
-        if (!isCorrectNetwork) {
-          try {
-            await switchToCorrectNetwork();
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-          } catch (error) {
-            return {
-              success: false,
-              message: "Please switch to the correct network first",
-            };
-          }
+        // Estimate gas
+        let gasEstimate: bigint;
+        try {
+          const { request } = await simulateContract(wagmiConfig, {
+            address: escrowContractAddress,
+            abi: Dezentra_ABI,
+            functionName: "confirmDelivery",
+            args: [BigInt(purchaseId)],
+            account: address,
+          });
+          gasEstimate = request.gas
+            ? (request.gas * BigInt(120)) / BigInt(100)
+            : GAS_LIMITS.CONFIRM_DELIVERY || BigInt(100000);
+        } catch (estimateError) {
+          console.warn("Gas estimation failed, using default:", estimateError);
+          gasEstimate = GAS_LIMITS.CONFIRM_DELIVERY || BigInt(100000);
         }
-
-        const escrowAddress = getEscrowAddress();
-        const purchaseIdBigInt = BigInt(purchaseId);
-
-        showSnackbar("Confirming delivery...", "info");
 
         const hash = await writeContractAsync({
-          address: escrowAddress,
+          address: escrowContractAddress,
           abi: Dezentra_ABI,
           functionName: "confirmDelivery",
-          args: [purchaseIdBigInt],
+          args: [BigInt(purchaseId)],
+          gas: gasEstimate,
         });
 
-        return {
-          success: true,
-          message: "Delivery confirmation submitted successfully",
-          hash,
-        };
-      } catch (error: any) {
-        console.error("Confirm delivery error:", error);
-
-        // Handle specific contract errors
-        let errorMessage = "Failed to confirm delivery. Please try again.";
-
-        if (error.message?.includes("InvalidPurchaseId")) {
-          errorMessage = "Invalid purchase ID. Please check and try again.";
-        } else if (error.message?.includes("InvalidPurchaseState")) {
-          errorMessage =
-            "Purchase is not in the correct state for delivery confirmation.";
-        } else if (error.message?.includes("NotAuthorized")) {
-          errorMessage = "You are not authorized to confirm this delivery.";
-        } else if (error.message?.includes("PurchaseNotFound")) {
-          errorMessage = "Purchase not found. Please check the purchase ID.";
-        } else if (error.message?.includes("User rejected")) {
-          errorMessage = "Transaction was cancelled by user.";
-        } else if (error.message?.includes("insufficient funds")) {
-          errorMessage = "Insufficient funds for gas fees.";
+        if (!hash) {
+          throw new Error("Transaction failed to execute");
         }
 
-        return { success: false, message: errorMessage };
+        // Wait for confirmation
+        await waitForTransactionReceipt(wagmiConfig, {
+          hash,
+          timeout: 60000,
+        });
+
+        showSnackbar("Delivery confirmed successfully!", "success");
+
+        return {
+          hash,
+          timestamp: Date.now(),
+          status: "success",
+        };
+      } catch (error: any) {
+        console.error("Confirm delivery failed:", error);
+
+        const errorMessage = error?.message || error?.toString() || "";
+
+        if (errorMessage.includes("InvalidPurchaseId")) {
+          throw new Error("Invalid purchase ID");
+        }
+        if (errorMessage.includes("InvalidPurchaseState")) {
+          throw new Error(
+            "Purchase is not in the correct state for delivery confirmation"
+          );
+        }
+        if (errorMessage.includes("NotAuthorized")) {
+          throw new Error("You are not authorized to confirm this delivery");
+        }
+        if (errorMessage.includes("User rejected")) {
+          throw new Error("Transaction was rejected by user");
+        }
+
+        throw new Error(
+          `Delivery confirmation failed: ${parseWeb3Error(error)}`
+        );
       }
     },
     [
-      wallet.isConnected,
-      wallet.address,
-      isCorrectNetwork,
-      switchToCorrectNetwork,
-      getEscrowAddress,
+      address,
+      chain?.id,
+      escrowContractAddress,
       writeContractAsync,
       showSnackbar,
     ]
   );
 
+  // Confirm purchase function
   const confirmPurchase = useCallback(
-    async (purchaseId: string): Promise<ContractResult> => {
+    async (purchaseId: string): Promise<SmartContractResult> => {
+      if (!address || !chain?.id) {
+        throw new Error("Wallet not connected");
+      }
+
+      if (!escrowContractAddress) {
+        throw new Error("Escrow contract not available on this network");
+      }
+
       try {
-        if (!wallet.isConnected || !wallet.address) {
-          return {
-            success: false,
-            message: "Please connect your wallet first",
-          };
+        // Validate purchase exists
+        const purchaseDetails = await readContract(wagmiConfig, {
+          address: escrowContractAddress,
+          abi: Dezentra_ABI,
+          functionName: "purchases",
+          args: [BigInt(purchaseId)],
+        });
+
+        if (!purchaseDetails || (purchaseDetails as any).purchaseId === 0n) {
+          throw new Error("Purchase not found");
         }
 
-        if (!isCorrectNetwork) {
-          try {
-            await switchToCorrectNetwork();
-            await new Promise((resolve) => setTimeout(resolve, 1500));
-          } catch (error) {
-            return {
-              success: false,
-              message: "Please switch to the correct network first",
-            };
-          }
+        // Estimate gas
+        let gasEstimate: bigint;
+        try {
+          const { request } = await simulateContract(wagmiConfig, {
+            address: escrowContractAddress,
+            abi: Dezentra_ABI,
+            functionName: "confirmPurchase",
+            args: [BigInt(purchaseId)],
+            account: address,
+          });
+          gasEstimate = request.gas
+            ? (request.gas * BigInt(120)) / BigInt(100)
+            : GAS_LIMITS.CONFIRM_PURCHASE || BigInt(80000);
+        } catch (estimateError) {
+          console.warn("Gas estimation failed, using default:", estimateError);
+          gasEstimate = GAS_LIMITS.CONFIRM_PURCHASE || BigInt(80000);
         }
-
-        const escrowAddress = getEscrowAddress();
-        const purchaseIdBigInt = BigInt(purchaseId);
-
-        showSnackbar("Confirming purchase...", "info");
 
         const hash = await writeContractAsync({
-          address: escrowAddress,
+          address: escrowContractAddress,
           abi: Dezentra_ABI,
           functionName: "confirmPurchase",
-          args: [purchaseIdBigInt],
+          args: [BigInt(purchaseId)],
+          gas: gasEstimate,
         });
 
-        return {
-          success: true,
-          message: "Purchase confirmation submitted successfully",
-          hash,
-        };
-      } catch (error: any) {
-        console.error("Confirm purchase error:", error);
-
-        let errorMessage = "Failed to confirm purchase. Please try again.";
-
-        if (error.message?.includes("InvalidPurchaseId")) {
-          errorMessage = "Invalid purchase ID. Please check and try again.";
-        } else if (error.message?.includes("InvalidPurchaseState")) {
-          errorMessage =
-            "Purchase is not in the correct state for confirmation.";
-        } else if (error.message?.includes("NotAuthorized")) {
-          errorMessage = "You are not authorized to confirm this purchase.";
-        } else if (error.message?.includes("PurchaseNotFound")) {
-          errorMessage = "Purchase not found. Please check the purchase ID.";
-        } else if (error.message?.includes("User rejected")) {
-          errorMessage = "Transaction was cancelled by user.";
-        } else if (error.message?.includes("insufficient funds")) {
-          errorMessage = "Insufficient funds for gas fees.";
+        if (!hash) {
+          throw new Error("Transaction failed to execute");
         }
 
-        return { success: false, message: errorMessage };
+        // Wait for confirmation
+        await waitForTransactionReceipt(wagmiConfig, {
+          hash,
+          timeout: 60000,
+        });
+
+        showSnackbar("Purchase confirmed successfully!", "success");
+
+        return {
+          hash,
+          timestamp: Date.now(),
+          status: "success",
+        };
+      } catch (error: any) {
+        console.error("Confirm purchase failed:", error);
+
+        const errorMessage = error?.message || error?.toString() || "";
+
+        if (errorMessage.includes("InvalidPurchaseId")) {
+          throw new Error("Invalid purchase ID");
+        }
+        if (errorMessage.includes("InvalidPurchaseState")) {
+          throw new Error(
+            "Purchase is not in the correct state for confirmation"
+          );
+        }
+        if (errorMessage.includes("NotAuthorized")) {
+          throw new Error("You are not authorized to confirm this purchase");
+        }
+        if (errorMessage.includes("User rejected")) {
+          throw new Error("Transaction was rejected by user");
+        }
+
+        throw new Error(
+          `Purchase confirmation failed: ${parseWeb3Error(error)}`
+        );
       }
     },
     [
-      wallet.isConnected,
-      wallet.address,
-      isCorrectNetwork,
-      switchToCorrectNetwork,
-      getEscrowAddress,
+      address,
+      chain?.id,
+      escrowContractAddress,
       writeContractAsync,
       showSnackbar,
     ]
   );
+
+  // Get supported chains function
+  const {
+    data: supportedChains,
+    refetch: refetchSupportedChains,
+    isLoading: isLoadingSupportedChains,
+  } = useReadContract({
+    address: escrowContractAddress,
+    abi: Dezentra_ABI,
+    functionName: "getAllowlistedChains",
+    query: {
+      enabled: !!escrowContractAddress,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      refetchInterval: 10 * 60 * 1000, // 10 minutes
+    },
+  });
+
+  const getSupportedChains = useCallback(async (): Promise<ChainInfo[]> => {
+    try {
+      const chains =
+        supportedChains ||
+        (await refetchSupportedChains().then((result) => result.data));
+
+      if (!chains || !Array.isArray(chains)) {
+        return [];
+      }
+
+      // Map chain selectors to readable chain info
+      const chainMapping: Record<string, { chainId: number; name: string }> = {
+        "16015286601757825753": { chainId: 43113, name: "Avalanche Fuji" },
+        "10344971235874465080": { chainId: 84532, name: "Base Sepolia" },
+        "16281711391670634445": { chainId: 11155111, name: "Ethereum Sepolia" },
+        "3478487238524512106": { chainId: 421614, name: "Arbitrum Sepolia" },
+      };
+
+      return (chains as bigint[])
+        .map((selector) => {
+          const selectorStr = selector.toString();
+          const chainInfo = chainMapping[selectorStr];
+
+          if (chainInfo) {
+            return {
+              chainSelector: selectorStr,
+              chainId: chainInfo.chainId,
+              name: chainInfo.name,
+            };
+          }
+
+          return {
+            chainSelector: selectorStr,
+            chainId: 0,
+            name: `Unknown Chain (${selectorStr})`,
+          };
+        })
+        .filter((chain) => chain.chainId !== 0);
+    } catch (error) {
+      console.error("Failed to fetch supported chains:", error);
+      return [];
+    }
+  }, [supportedChains, refetchSupportedChains]);
 
   return {
     confirmDelivery,
     confirmPurchase,
-    // raiseDispute,
+    getSupportedChains,
+    supportedChains,
+    isLoadingSupportedChains,
+    refetchSupportedChains,
   };
 };
