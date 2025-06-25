@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConnect } from "wagmi";
 import { SiCoinbase } from "react-icons/si";
@@ -9,6 +9,7 @@ import {
   HiXMark,
   HiArrowPath,
   HiShieldCheck,
+  HiGlobeAlt,
 } from "react-icons/hi2";
 import Modal from "../common/Modal";
 import Button from "../common/Button";
@@ -17,6 +18,11 @@ import { useWeb3 } from "../../context/Web3Context";
 import { useSnackbar } from "../../context/SnackbarContext";
 import { useCurrencyConverter } from "../../utils/hooks/useCurrencyConverter";
 import { metamaskLogo } from "../../pages";
+import {
+  TARGET_CHAIN,
+  SUPPORTED_CHAINS,
+  getChainMetadata,
+} from "../../utils/config/web3.config";
 
 interface WalletConnectionModalProps {
   isOpen: boolean;
@@ -37,107 +43,124 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
   const [connectionTimeout, setConnectionTimeout] = useState(false);
   const [walletConnectLoading, setWalletConnectLoading] = useState(false);
 
+  // Memoized available connectors with enhanced filtering
   const availableConnectors = useMemo(() => {
     return connectors.filter((connector) => {
       if (connector.name.toLowerCase().includes("walletconnect")) {
         return !!import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
       }
-      return true;
+      return connector.ready !== false;
     });
   }, [connectors]);
 
-  // Handle successful connection
+  // Memoized supported networks display
+  const supportedNetworks = useMemo(() => {
+    return SUPPORTED_CHAINS.map((chain) => {
+      const metadata = getChainMetadata(chain.id);
+      return {
+        id: chain.id,
+        name: metadata?.shortName || chain.name,
+        isTarget: chain.id === TARGET_CHAIN.id,
+      };
+    }).slice(0, 4); // Show max 4 networks
+  }, []);
+
+  // Enhanced connection success handler
   useEffect(() => {
     if (wallet.isConnected && connectingWallet) {
-      setConnectingWallet(null);
-      setConnectionTimeout(false);
+      const cleanup = () => {
+        setConnectingWallet(null);
+        setConnectionTimeout(false);
+        setWalletConnectLoading(false);
+      };
+
+      cleanup();
       onClose();
-      showSnackbar("Wallet connected successfully!", "success");
+      showSnackbar(
+        "Wallet connected successfully! Ready for cross-chain shopping.",
+        "success"
+      );
     }
   }, [wallet.isConnected, connectingWallet, onClose, showSnackbar]);
 
-  // Connection timeout
+  // Optimized connection timeout with cleanup
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
+    if (!connectingWallet) return;
 
-    if (connectingWallet) {
-      timeoutId = setTimeout(() => {
-        setConnectionTimeout(true);
-      }, 15000);
-    }
+    const timeoutId = setTimeout(() => {
+      setConnectionTimeout(true);
+    }, 15000);
 
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-    };
+    return () => clearTimeout(timeoutId);
   }, [connectingWallet]);
 
-  // Handle WalletConnect loading
+  // Enhanced WalletConnect loading state
   useEffect(() => {
-    const walletConnectConnector = connectors.find((c) =>
-      c.name.toLowerCase().includes("walletconnect")
-    );
+    if (!connectingWallet?.toLowerCase().includes("walletconnect")) return;
 
-    if (
-      walletConnectConnector &&
-      connectingWallet === walletConnectConnector.name
-    ) {
-      setWalletConnectLoading(true);
-      const timer = setTimeout(() => setWalletConnectLoading(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [connectingWallet, connectors]);
+    setWalletConnectLoading(true);
+    const timer = setTimeout(() => setWalletConnectLoading(false), 3000);
+    return () => clearTimeout(timer);
+  }, [connectingWallet]);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (!connectingWallet) {
       onClose();
     }
-  };
+  }, [connectingWallet, onClose]);
 
-  const handleConnect = async (connector: any) => {
-    try {
-      setConnectingWallet(connector.name);
-      setConnectionTimeout(false);
+  const handleConnect = useCallback(
+    async (connector: any) => {
+      try {
+        setConnectingWallet(connector.name);
+        setConnectionTimeout(false);
 
-      if (connector.name.toLowerCase().includes("walletconnect")) {
-        setWalletConnectLoading(true);
+        if (connector.name.toLowerCase().includes("walletconnect")) {
+          setWalletConnectLoading(true);
+        }
+
+        await connect({ connector });
+      } catch (error: any) {
+        console.error("Connection failed:", error);
+        setConnectingWallet(null);
+        setConnectionTimeout(false);
+        setWalletConnectLoading(false);
+
+        // Enhanced error handling
+        if (error.message?.includes("User rejected")) {
+          showSnackbar("Connection cancelled", "info");
+        } else if (error.message?.includes("Project ID")) {
+          showSnackbar("Wallet service temporarily unavailable", "error");
+        } else if (error.message?.includes("Already processing")) {
+          showSnackbar("Connection already in progress", "info");
+        } else {
+          showSnackbar("Failed to connect wallet. Please try again.", "error");
+        }
       }
+    },
+    [connect, showSnackbar]
+  );
 
-      await connect({ connector });
-    } catch (error: any) {
-      console.error("Connection failed:", error);
-      setConnectingWallet(null);
-      setConnectionTimeout(false);
-      setWalletConnectLoading(false);
-
-      if (error.message?.includes("User rejected")) {
-        showSnackbar("Connection cancelled", "info");
-      } else if (error.message?.includes("Project ID")) {
-        showSnackbar("Wallet service temporarily unavailable", "error");
-      } else {
-        showSnackbar("Failed to connect wallet. Please try again.", "error");
-      }
-    }
-  };
-
-  const handleCancelConnection = () => {
+  const handleCancelConnection = useCallback(() => {
     reset();
     setConnectingWallet(null);
     setConnectionTimeout(false);
     setWalletConnectLoading(false);
-  };
+  }, [reset]);
 
-  const handleRetryConnection = () => {
+  const handleRetryConnection = useCallback(() => {
     setConnectionTimeout(false);
     const connector = connectors.find((c) => c.name === connectingWallet);
     if (connector) {
       handleConnect(connector);
     }
-  };
+  }, [connectors, connectingWallet, handleConnect]);
 
-  const getWalletIcon = (name: string) => {
-    switch (name.toLowerCase()) {
+  const getWalletIcon = useCallback((name: string) => {
+    const normalizedName = name.toLowerCase();
+    switch (normalizedName) {
       case "metamask":
-        return <img src={metamaskLogo} alt="Metamask" className="w-8 h-8" />;
+        return <img src={metamaskLogo} alt="MetaMask" className="w-8 h-8" />;
       case "coinbase wallet":
         return <SiCoinbase className="w-8 h-8 text-blue-500" />;
       case "walletconnect":
@@ -145,9 +168,23 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
       default:
         return <HiDevicePhoneMobile className="w-8 h-8 text-gray-400" />;
     }
-  };
+  }, []);
 
-  const getConnectionMessage = () => {
+  const getWalletDescription = useCallback((name: string) => {
+    const normalizedName = name.toLowerCase();
+    if (normalizedName.includes("walletconnect")) {
+      return "Connect mobile wallets via QR code";
+    }
+    if (normalizedName === "metamask") {
+      return "Most popular crypto wallet extension";
+    }
+    if (normalizedName === "coinbase wallet") {
+      return "Secure wallet from Coinbase exchange";
+    }
+    return "Secure crypto wallet connection";
+  }, []);
+
+  const getConnectionMessage = useCallback(() => {
     if (!connectingWallet) return null;
 
     const isMobile =
@@ -159,7 +196,7 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
       return {
         title: "Connecting to WalletConnect",
         message:
-          "This may take a moment. Please be patient or try other wallet options.",
+          "Scan QR code with your mobile wallet or wait for the connection to establish.",
         loading: walletConnectLoading,
       };
     }
@@ -168,8 +205,8 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
       return {
         title: "Connection Taking Too Long?",
         message: isMobile
-          ? "Make sure your wallet app is running and hasn't crashed. Close and reopen your wallet app, then try again. Also ensure your wallet is connected to the Celo network."
-          : "Make sure your wallet extension is running and hasn't crashed. Refresh your browser or restart the wallet extension, then try again. Also ensure your wallet is connected to the Celo network.",
+          ? "Ensure your wallet app is open and connected to a supported network (Avalanche Fuji, Base Sepolia, Ethereum Sepolia, or Arbitrum Sepolia)."
+          : "Check that your wallet extension is active and connected to a supported network. Try refreshing the page if the issue persists.",
         timeout: true,
       };
     }
@@ -177,11 +214,11 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
     return {
       title: `Connecting to ${connectingWallet}`,
       message: isMobile
-        ? "Check your wallet app for connection request"
-        : "Check your wallet extension for connection request",
+        ? "Check your wallet app for the connection request"
+        : "Look for a connection popup in your wallet extension",
       loading: true,
     };
-  };
+  }, [connectingWallet, connectionTimeout, walletConnectLoading]);
 
   const connectionMessage = getConnectionMessage();
 
@@ -214,12 +251,12 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
               className={`p-4 rounded-lg border transition-all duration-200 ${
                 connectionMessage.timeout
                   ? "bg-Red/10 border-Red/30"
-                  : "bg-Red/5 border-Red/20"
+                  : "bg-Blue/10 border-Blue/20"
               }`}
             >
               <div className="flex items-start gap-3">
                 {connectionMessage.loading && (
-                  <div className="w-5 h-5 border-2 border-Red border-t-transparent rounded-full animate-spin flex-shrink-0 mt-0.5" />
+                  <div className="w-5 h-5 border-2 border-Blue border-t-transparent rounded-full animate-spin flex-shrink-0 mt-0.5" />
                 )}
                 {connectionMessage.timeout && (
                   <HiExclamationTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-Red" />
@@ -258,14 +295,30 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
         {!connectingWallet && (
           <div className="text-center space-y-4">
             <p className="text-gray-300">
-              Choose your preferred wallet to start shopping with crypto
+              Connect your wallet to shop across multiple blockchains
             </p>
-            <div className="flex items-center justify-center gap-2 text-sm text-Red bg-Red/10 rounded-lg p-3 border border-Red/20">
-              <HiShieldCheck className="w-4 h-4 flex-shrink-0" />
+
+            {/* Cross-chain benefits */}
+            <div className="flex items-center justify-center gap-2 text-sm text-Blue bg-Blue/10 rounded-lg p-3 border border-Blue/20">
+              <HiGlobeAlt className="w-4 h-4 flex-shrink-0" />
               <span>
-                Secure payments in {userCountry || "your local currency"} • No
-                fees • Instant settlement
+                Cross-chain payments • {userCountry || "Local currency"} •
+                Secure escrow
               </span>
+            </div>
+
+            {/* Supported networks preview */}
+            <div className="flex items-center justify-center gap-1 text-xs text-gray-400">
+              <span>Supports:</span>
+              {supportedNetworks.map((network, index) => (
+                <span
+                  key={network.id}
+                  className={network.isTarget ? "text-Red font-medium" : ""}
+                >
+                  {network.name}
+                  {index < supportedNetworks.length - 1 && ", "}
+                </span>
+              ))}
             </div>
           </div>
         )}
@@ -284,25 +337,21 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
                 disabled={!!connectingWallet}
                 className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all duration-200 ${
                   connectingWallet === connector.name
-                    ? "bg-Red/20 border-Red/50 text-white shadow-lg shadow-Red/10"
+                    ? "bg-Blue/20 border-Blue/50 text-white shadow-lg shadow-Blue/10"
                     : connectingWallet
                     ? "bg-Dark/50 border-gray-700/30 text-gray-500 cursor-not-allowed"
-                    : "bg-Dark hover:bg-Dark/80 border-gray-700/50 text-white hover:border-Red/30 hover:shadow-lg hover:shadow-Red/5"
+                    : "bg-Dark hover:bg-Dark/80 border-gray-700/50 text-white hover:border-Blue/30 hover:shadow-lg hover:shadow-Blue/5"
                 }`}
               >
                 {getWalletIcon(connector.name)}
                 <div className="flex-1 text-left">
                   <h3 className="font-medium">{connector.name}</h3>
                   <p className="text-sm opacity-75">
-                    {connector.name.toLowerCase().includes("walletconnect")
-                      ? "Connect with mobile wallet apps"
-                      : connector.name === "MetaMask"
-                      ? "Popular browser extension wallet"
-                      : "Secure wallet from Coinbase exchange"}
+                    {getWalletDescription(connector.name)}
                   </p>
                 </div>
                 {connectingWallet === connector.name ? (
-                  <div className="w-5 h-5 border-2 border-Red border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-Blue border-t-transparent rounded-full animate-spin" />
                 ) : connectingWallet ? (
                   <div className="w-2 h-2 bg-gray-500 rounded-full" />
                 ) : (
@@ -327,15 +376,18 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
         {!connectingWallet && (
           <div className="border-t border-gray-700/50 pt-4 space-y-3">
             <Button
-              title="New to wallets? Learn the basics"
+              title="New to crypto wallets? Learn the basics"
               icon={<HiQuestionMarkCircle className="w-4 h-4" />}
               onClick={() => setShowEducation(true)}
-              className="flex items-center justify-center w-full bg-transparent border border-Red/30 text-gray-300 hover:bg-Red/5 hover:text-white hover:border-Red/50 transition-all duration-200"
+              className="flex items-center justify-center w-full bg-transparent border border-Blue/30 text-gray-300 hover:bg-Blue/5 hover:text-white hover:border-Blue/50 transition-all duration-200"
             />
 
-            <p className="text-xs text-gray-500 text-center">
-              Your wallet stays secure - we never store your private keys
-            </p>
+            <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+              <HiShieldCheck className="w-3 h-3" />
+              <span>
+                Your wallet stays secure - we never access your private keys
+              </span>
+            </div>
           </div>
         )}
 
