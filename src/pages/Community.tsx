@@ -57,7 +57,7 @@ const Community = () => {
       icon: <BsPeople className="text-3xl text-Red" />,
       title: "Connect with Traders",
       description:
-        "Meet and interact with other DezenMart enthusiasts and traders.",
+        "Meet and interact with other Dezentra enthusiasts and traders.",
     },
     {
       icon: <AiOutlineCalendar className="text-3xl text-Red" />,
@@ -233,7 +233,7 @@ const Community = () => {
               {/* <SocialIcon icon={<FaGithub />} /> */}
             </div>
             <p className="text-[#C6C6C8] text-sm text-center">
-              © Copyrights Dezenmart| All Rights Reserved
+              © Copyrights Dezentra| All Rights Reserved
             </p>
           </motion.div>
         </motion.div>

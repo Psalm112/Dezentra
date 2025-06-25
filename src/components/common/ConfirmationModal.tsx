@@ -35,8 +35,8 @@ const ConfirmationModal: FC<ConfirmationModalProps> = ({
     : "Please Confirm Payment";
 
   const warningMessage = isDelivery
-    ? `Upon confirmation funds will be released to the seller. Dezenmart does not hold your assets. Be cautious and protect yourself from scams.`
-    : `Never release funds before confirming payment receipt. Dezenmart does not hold your assets. Be cautious and protect yourself from scams.`;
+    ? `Upon confirmation funds will be released to the seller. Dezentra does not hold your assets. Be cautious and protect yourself from scams.`
+    : `Never release funds before confirming payment receipt. Dezentra does not hold your assets. Be cautious and protect yourself from scams.`;
 
   const creditConfirmText = isDelivery
     ? `I confirm that ${senderName || "the seller"} has delivered the product.`

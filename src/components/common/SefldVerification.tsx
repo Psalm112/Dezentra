@@ -48,8 +48,8 @@ function SefldVerification({ isOpen, onClose }: props) {
     const API_URL = import.meta.env.VITE_API_URL;
     setSelfApp(
       new SelfAppBuilder({
-        appName: "Dezenmart",
-        scope: "dezenmart-scope",
+        appName: "Dezentra",
+        scope: "dezentra-scope",
         endpoint: `${API_URL}/users/verify-self`,
         endpointType: "https",
         logoBase64: FullLogo,

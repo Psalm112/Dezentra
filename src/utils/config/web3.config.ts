@@ -148,13 +148,13 @@ export const wagmiConfig = createConfig({
   connectors: [
     metaMask({
       dappMetadata: {
-        name: "Dezenmart - Cross-Chain Marketplace",
+        name: "Dezentra - Cross-Chain Marketplace",
         url: window.location.origin,
         iconUrl: `${window.location.origin}/favicon.ico`,
       },
     }),
     coinbaseWallet({
-      appName: "Dezenmart",
+      appName: "Dezentra",
       appLogoUrl: `${window.location.origin}/images/logo-full.png`,
       darkMode: false,
     }),
@@ -163,7 +163,7 @@ export const wagmiConfig = createConfig({
           walletConnect({
             projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID,
             metadata: {
-              name: "Dezenmart",
+              name: "Dezentra",
               description:
                 "Cross-chain decentralized marketplace for secure crypto payments",
               url: window.location.origin,
