@@ -86,3 +86,14 @@ export interface PaymentOrderDetails {
   logisticsProviderWalletAddress: string;
   escrowAddress?: string;
 }
+
+export interface ChainMetadata {
+  [key: string]: {
+    name: string;
+    shortName: string;
+    icon: string;
+    color: string;
+    nativeCurrency: string;
+    blockExplorer: string;
+  };
+}

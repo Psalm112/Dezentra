@@ -6,6 +6,7 @@ import {
   avalancheFuji,
 } from "wagmi/chains";
 import { coinbaseWallet, metaMask, walletConnect } from "wagmi/connectors";
+import { ChainMetadata } from "../types/web3.types";
 
 // RPC endpoints with fallbacks
 const rpcEndpoints = {
@@ -66,7 +67,7 @@ export const CCIP_CHAIN_SELECTORS = {
 } as const;
 
 // Chain metadata
-export const CHAIN_METADATA = {
+export const CHAIN_METADATA: ChainMetadata = {
   [avalancheFuji.id]: {
     name: "Avalanche Fuji",
     shortName: "AVAX",
