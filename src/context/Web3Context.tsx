@@ -72,6 +72,7 @@ interface ExtendedWeb3ContextType extends Omit<Web3ContextType, "wallet"> {
     destinationChainSelector: string,
     payFeesIn: 0 | 1
   ) => Promise<bigint>;
+  chainId: number | undefined;
 }
 
 const Web3Context = createContext<ExtendedWeb3ContextType | undefined>(
@@ -929,6 +930,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     refreshBalances,
     estimateCrossChainFees,
     isCorrectNetwork,
+    chainId: chain?.id,
   };
 
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;
