@@ -22,7 +22,6 @@ const PurchaseSection = ({
   selectedVariant,
 }: PurchaseSectionProps) => {
   const navigate = useNavigate();
-  const { placeOrder } = useOrderData();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -37,6 +36,10 @@ const PurchaseSection = ({
     networkStatus,
     switchToCorrectNetwork,
   } = useWeb3();
+  const { placeOrder } = useOrderData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
   const [selectedLogistics, setSelectedLogistics] =
     useState<LogisticsProvider | null>(null);
 

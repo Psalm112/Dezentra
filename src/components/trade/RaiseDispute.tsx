@@ -7,6 +7,7 @@ import {
 } from "react-icons/fa";
 import { motion } from "framer-motion";
 import { useOrderData } from "../../utils/hooks/useOrder";
+import { useWeb3 } from "../../context/Web3Context";
 
 interface RaiseDisputeProps {
   tradeId: string;
@@ -14,7 +15,11 @@ interface RaiseDisputeProps {
 }
 
 const RaiseDispute: FC<RaiseDisputeProps> = ({ tradeId, onComplete }) => {
-  const { raiseDispute } = useOrderData();
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
+  const { raiseDispute } = useOrderData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
   const [status, setStatus] = useState<
     "pending" | "processing" | "success" | "error"
   >("pending");

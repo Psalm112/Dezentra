@@ -27,7 +27,15 @@ import { Product } from "../types";
 import { useCurrency } from "../../context/CurrencyContext";
 import { useAuth } from "../../context/AuthContext";
 
-export const useProductData = () => {
+interface UseProductDataProps {
+  chainId?: number;
+  isConnected?: boolean;
+}
+
+export const useProductData = ({
+  chainId,
+  isConnected = false,
+}: UseProductDataProps = {}) => {
   const { user } = useAuth();
   const { secondaryCurrency } = useCurrency();
   const dispatch = useAppDispatch();
@@ -36,7 +44,7 @@ export const useProductData = () => {
     loading: exchangeRatesLoading,
     convertPrice,
     formatPrice,
-  } = useCurrencyConverter();
+  } = useCurrencyConverter({ chainId, isConnected });
 
   const products = useAppSelector(selectAllProducts);
   const product = useAppSelector(selectCurrentProduct);

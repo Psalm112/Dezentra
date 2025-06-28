@@ -18,7 +18,7 @@ const ViewTrade = memo(() => {
   const [activeTab, setActiveTab] = useState<TradeTab>("active");
   const [isLoading, setIsLoading] = useState(true);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
-  const { wallet } = useWeb3();
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
 
   // Refs for cleanup
   const mountedRef = useRef(true);
@@ -30,7 +30,10 @@ const ViewTrade = memo(() => {
     fetchBuyerOrders,
     fetchMerchantOrders,
     loading: orderLoading,
-  } = useOrderData();
+  } = useOrderData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
 
   // filtered trades
   const filteredActiveTrades = useMemo(() => {

@@ -60,8 +60,11 @@ const FundsReleaseStatus: FC<FundsReleaseStatusProps> = ({
   showTimer,
 }) => {
   const { showSnackbar } = useSnackbar();
-  const { changeOrderStatus } = useOrderData();
-  const { wallet, chainId } = useWeb3();
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
+  const { changeOrderStatus } = useOrderData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
   const navigate = useNavigate();
 
   // Refs for cleanup

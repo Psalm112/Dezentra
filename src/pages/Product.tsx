@@ -6,6 +6,7 @@ import ProductList from "../components/product/ProductList";
 import { useProductData } from "../utils/hooks/useProduct";
 import { debounce } from "../utils/helpers";
 import ProductCard from "../components/product/ProductCard";
+import { useWeb3 } from "../context/Web3Context";
 
 const categories = [
   "Electronics",
@@ -22,6 +23,7 @@ const Product = () => {
   const location = useLocation();
   const params = useParams();
   const categoryParam = params.categoryName;
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
 
   const {
     searchProducts,
@@ -29,7 +31,10 @@ const Product = () => {
     loading,
     fetchAllProducts,
     fetchSponsoredProducts,
-  } = useProductData();
+  } = useProductData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
 
   const [isSearching, setIsSearching] = useState(false);
   const [activeCategory, setActiveCategory] = useState(categoryParam || "All");

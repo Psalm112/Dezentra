@@ -24,7 +24,15 @@ import { OrderStatus, Order } from "../types";
 import { useCurrencyConverter } from "./useCurrencyConverter";
 import { useCurrency } from "../../context/CurrencyContext";
 
-export const useOrderData = () => {
+interface UseOrderDataProps {
+  chainId?: number;
+  isConnected?: boolean;
+}
+
+export const useOrderData = ({
+  chainId,
+  isConnected = false,
+}: UseOrderDataProps = {}) => {
   const { secondaryCurrency } = useCurrency();
   const dispatch = useAppDispatch();
   const { showSnackbar } = useSnackbar();
@@ -32,7 +40,7 @@ export const useOrderData = () => {
     loading: exchangeRatesLoading,
     convertPrice,
     formatPrice,
-  } = useCurrencyConverter();
+  } = useCurrencyConverter({ chainId, isConnected });
 
   const orders = useAppSelector(selectAllOrders);
   const sellerOrders = useAppSelector(selectSellerOrders);

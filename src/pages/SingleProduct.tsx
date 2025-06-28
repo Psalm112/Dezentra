@@ -17,6 +17,7 @@ import { useProductData } from "../utils/hooks/useProduct";
 import { useCurrency } from "../context/CurrencyContext";
 import { ProductVariant } from "../utils/types";
 import { useAuth } from "../context/AuthContext";
+import { useWeb3 } from "../context/Web3Context";
 
 type TabType = "details" | "reviews";
 
@@ -24,13 +25,17 @@ const SingleProduct = () => {
   const { user } = useAuth();
   const { productId } = useParams();
   const navigate = useNavigate();
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
   const {
     formattedProduct,
     loading,
     error,
     fetchProductById,
     relatedProducts,
-  } = useProductData();
+  } = useProductData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
   const { secondaryCurrency } = useCurrency();
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [reviewCount, setReviewCount] = useState(0);

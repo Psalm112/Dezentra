@@ -16,6 +16,7 @@ import React, {
 import LoadingSpinner from "../../common/LoadingSpinner";
 import { useOrderData } from "../../../utils/hooks/useOrder";
 import { useWatchlist } from "../../../utils/hooks/useWatchlist";
+import { useWeb3 } from "../../../context/Web3Context";
 
 const ProductContainer = lazy(() => import("./products/Container"));
 
@@ -34,13 +35,17 @@ interface TabContentProps {
 }
 
 const TabContent: React.FC<TabContentProps> = React.memo(({ activeTab }) => {
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
   const {
     fetchBuyerOrders,
     disputeOrders,
     nonDisputeOrders,
     loading: orderLoading,
     error: orderError,
-  } = useOrderData();
+  } = useOrderData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
 
   const {
     watchlistItems,

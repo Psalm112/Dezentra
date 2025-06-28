@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FiImage, FiX, FiPlus, FiVideo, FiTag } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { useProductData } from "../../../../utils/hooks/useProduct";
+import { useWeb3 } from "../../../../context/Web3Context";
 import Button from "../../../common/Button";
 import { useCurrencyConverter } from "../../../../utils/hooks/useCurrencyConverter";
 import { LogisticsProvider } from "../../../../utils/types";
@@ -122,7 +123,11 @@ const fadeInAnimation = {
 
 const CreateProduct: React.FC<CreateProductProps> = ({ onProductCreated }) => {
   const navigate = useNavigate();
-  const { createProduct, loading } = useProductData();
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
+  const { createProduct, loading } = useProductData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
   const { showSnackbar } = useSnackbar();
   const { convertPrice, userCountry } = useCurrencyConverter();
   const {

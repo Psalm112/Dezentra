@@ -45,7 +45,7 @@ const ViewOrderDetail = memo(() => {
   const location = useLocation();
   const navigate = useNavigate();
   const { showSnackbar } = useSnackbar();
-  const { wallet, chainId } = useWeb3();
+  const { wallet, chainId, isCorrectNetwork } = useWeb3();
 
   // Refs for cleanup
   const mountedRef = useRef(true);
@@ -87,7 +87,10 @@ const ViewOrderDetail = memo(() => {
     error,
     changeOrderStatus,
     raiseDispute,
-  } = useOrderData();
+  } = useOrderData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
   const chainDetectionRef = useRef<{
     productChainId: number;
     timestamp: number;

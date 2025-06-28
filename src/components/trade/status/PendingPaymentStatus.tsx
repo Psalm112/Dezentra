@@ -68,9 +68,12 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
   const navigate = useNavigate();
   const { showSnackbar } = useSnackbar();
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
-  const { wallet, connectWallet } = useWeb3();
+  const { wallet, connectWallet, chainId, isCorrectNetwork } = useWeb3();
   const { usdtBalance, refetch: refetchBalance } = useWalletBalance();
-  const { changeOrderStatus, currentOrder } = useOrderData();
+  const { changeOrderStatus, currentOrder } = useOrderData({
+    chainId,
+    isConnected: wallet.isConnected && isCorrectNetwork,
+  });
 
   const [paymentState, setPaymentState] = useState<{
     isProcessing: boolean;
