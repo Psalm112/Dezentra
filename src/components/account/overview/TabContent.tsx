@@ -64,7 +64,7 @@ const TabContent: React.FC<TabContentProps> = React.memo(({ activeTab }) => {
     }
   }, []);
 
-  // Initialize tab data with proper error handling and cleanup
+  // Initialize tab data
   const initializeTab = useCallback(
     async (tabId: string) => {
       if (tabInitialized[tabId]) return;
@@ -116,7 +116,6 @@ const TabContent: React.FC<TabContentProps> = React.memo(({ activeTab }) => {
     [tabInitialized, retryCount, fetchUserWatchlist, fetchBuyerOrders, cleanup]
   );
 
-  // Effect to handle tab changes
   useEffect(() => {
     if (["1", "3", "4"].includes(activeTab)) {
       initializeTab(activeTab);
@@ -147,7 +146,7 @@ const TabContent: React.FC<TabContentProps> = React.memo(({ activeTab }) => {
     initializeTab(tabId);
   }, [activeTab, initializeTab]);
 
-  // Enhanced loading state
+  // loading state
   const isTabLoading = useCallback(
     (tabId: string) => {
       return (

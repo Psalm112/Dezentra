@@ -1,4 +1,3 @@
-// src/components/account/referrals/PointsDisplay.tsx (mobile optimized)
 import { motion } from "framer-motion";
 
 interface PointsDisplayProps {

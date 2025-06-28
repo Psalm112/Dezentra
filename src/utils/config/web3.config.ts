@@ -7,6 +7,7 @@ import {
 } from "wagmi/chains";
 import { coinbaseWallet, metaMask, walletConnect } from "wagmi/connectors";
 import { ChainMetadata } from "../types/web3.types";
+import { createClient } from "viem";
 
 // RPC endpoints with fallbacks
 const rpcEndpoints = {
@@ -71,7 +72,7 @@ export const CHAIN_METADATA: ChainMetadata = {
   [avalancheFuji.id]: {
     name: "Avalanche Fuji",
     shortName: "AVAX",
-    icon: "https://cryptologos.cc/logos/avalanche-avax-logo.png",
+    icon: "/images/avalanche-logo.svg",
     color: "#e84142",
     nativeCurrency: "AVAX",
     blockExplorer: "https://testnet.snowtrace.io",
@@ -87,7 +88,7 @@ export const CHAIN_METADATA: ChainMetadata = {
   [sepolia.id]: {
     name: "Ethereum Sepolia",
     shortName: "ETH",
-    icon: "https://ethereum.org/static/655ede01eb7c29458fcd8429c6c6b4fa/71c57/eth-diamond-black.png",
+    icon: "/images/ethereum-logo.svg",
     color: "#627eea",
     nativeCurrency: "ETH",
     blockExplorer: "https://sepolia.etherscan.io",
@@ -95,7 +96,7 @@ export const CHAIN_METADATA: ChainMetadata = {
   [arbitrumSepolia.id]: {
     name: "Arbitrum Sepolia",
     shortName: "ARB",
-    icon: "https://arbitrum.io/wp-content/uploads/2021/01/cropped-Arbitrum_Symbol_-_Full_color_-_White_background-32x32.png",
+    icon: "/images/arbitrum-logo.svg",
     color: "#28a0f0",
     nativeCurrency: "ETH",
     blockExplorer: "https://sepolia.arbiscan.io",
@@ -143,6 +144,17 @@ export const getChainMetadata = (chainId: number) => {
   return CHAIN_METADATA[chainId as keyof typeof CHAIN_METADATA];
 };
 
+// Performance configuration
+export const PERFORMANCE_CONFIG = {
+  CACHE_DURATION: 30000,
+  POLLING_INTERVAL: 8000,
+  BATCH_SIZE: 512,
+  BATCH_WAIT: 8,
+  RETRY_COUNT: 2,
+  RETRY_DELAY: 1000,
+  TIMEOUT: 15000,
+} as const;
+
 // Wagmi configuration
 export const wagmiConfig = createConfig({
   chains: SUPPORTED_CHAINS as any,
@@ -170,7 +182,13 @@ export const wagmiConfig = createConfig({
               url: window.location.origin,
               icons: [`${window.location.origin}/images/logo-full.png`],
             },
-            showQrModal: true,
+            showQrModal: false,
+            qrModalOptions: {
+              themeMode: "dark",
+              themeVariables: {
+                "--wcm-z-index": "9999",
+              },
+            },
           }),
         ]
       : []),
@@ -184,12 +202,12 @@ export const wagmiConfig = createConfig({
           .map((url) =>
             http(url, {
               batch: {
-                batchSize: 10,
-                wait: 16,
+                batchSize: PERFORMANCE_CONFIG.BATCH_SIZE,
+                wait: PERFORMANCE_CONFIG.BATCH_WAIT,
               },
-              retryCount: 3,
-              retryDelay: 2000,
-              timeout: 30000,
+              retryCount: PERFORMANCE_CONFIG.RETRY_COUNT,
+              retryDelay: PERFORMANCE_CONFIG.RETRY_DELAY,
+              timeout: PERFORMANCE_CONFIG.TIMEOUT,
             })
           )
       ),
@@ -197,11 +215,11 @@ export const wagmiConfig = createConfig({
   ),
   batch: {
     multicall: {
-      batchSize: 1024 * 1024,
-      wait: 16,
+      batchSize: PERFORMANCE_CONFIG.BATCH_SIZE,
+      wait: PERFORMANCE_CONFIG.BATCH_WAIT,
     },
   },
-  pollingInterval: 4000,
+  pollingInterval: PERFORMANCE_CONFIG.POLLING_INTERVAL,
 });
 
 // Gas limits
@@ -262,13 +280,4 @@ export const TIMEOUTS = {
   CROSS_CHAIN_MESSAGE: 600000, // 10 minutes
   BALANCE_REFRESH: 30000, // 30 seconds
   ALLOWANCE_REFRESH: 15000, // 15 seconds
-} as const;
-
-// Performance optimization constants
-export const PERFORMANCE_CONFIG = {
-  DEBOUNCE_DELAY: 300,
-  THROTTLE_DELAY: 1000,
-  CACHE_DURATION: 60000, // 1 minute
-  BATCH_SIZE: 10,
-  MAX_RETRIES: 3,
 } as const;

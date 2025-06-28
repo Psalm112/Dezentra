@@ -51,15 +51,15 @@ export const useProductData = () => {
     (product: Product) => {
       if (!product) return null;
 
-      const celoPrice = convertPrice(product.price, "USDT", "CELO");
+      const nativePrice = convertPrice(product.price, "USDT", "NATIVE");
       const fiatPrice = convertPrice(product.price, "USDT", "FIAT");
 
       return {
         ...product,
-        celoPrice,
+        nativePrice,
         fiatPrice,
         formattedUsdtPrice: formatPrice(product.price, "USDT"),
-        formattedCeloPrice: formatPrice(celoPrice, "CELO"),
+        formattedNativePrice: formatPrice(nativePrice, "NATIVE"),
         formattedFiatPrice: formatPrice(fiatPrice, "FIAT"),
       };
     },

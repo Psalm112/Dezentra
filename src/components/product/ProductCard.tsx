@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { FaRegHeart, FaHeart } from "react-icons/fa";
 // import { RiVerifiedBadgeFill } from "react-icons/ri";
 import { Link, useNavigate } from "react-router-dom";
@@ -6,40 +6,113 @@ import { Link, useNavigate } from "react-router-dom";
 import { Product } from "../../utils/types";
 import { useWatchlist } from "../../utils/hooks/useWatchlist";
 import { useCurrency } from "../../context/CurrencyContext";
+import { useCurrencyConverter } from "../../utils/hooks/useCurrencyConverter";
+import { useWeb3 } from "../../context/Web3Context";
 import { motion } from "framer-motion";
-
 interface ProductCardProps {
   product: Product & {
-    formattedCeloPrice: string;
+    formattedNativePrice: string;
     formattedFiatPrice: string;
     formattedUsdtPrice: string;
   };
   isNew?: boolean;
 }
-
 const ProductCard = React.memo(
   ({ product, isNew = false }: ProductCardProps) => {
     const navigate = useNavigate();
     const { _id, name, description, images, isSponsored } = product;
     const { isProductInWatchlist, toggleWatchlist } = useWatchlist();
     const { secondaryCurrency } = useCurrency();
+    const { wallet, chainId, isCorrectNetwork } = useWeb3();
+    const {
+      convertPrice,
+      formatPrice,
+      nativeToken,
+      loading: ratesLoading,
+      isUnsupportedNetwork,
+    } = useCurrencyConverter({
+      chainId,
+      isConnected: wallet.isConnected && isCorrectNetwork,
+    });
+
     const isFavorite = isProductInWatchlist(_id);
 
-    const secondaryPrice =
-      secondaryCurrency === "USDT"
-        ? product.formattedUsdtPrice
-        : product.formattedFiatPrice;
+    // Extract base USDT price from formatted string
+    const baseUsdtPrice = useMemo(() => {
+      try {
+        // Remove currency symbols and parse the numeric value
+        const cleanPrice = product.formattedUsdtPrice
+          .replace(/[^0-9.,]/g, "")
+          .replace(",", "");
+        return parseFloat(cleanPrice) || 0;
+      } catch (error) {
+        console.warn("Failed to parse USDT price:", error);
+        return 0;
+      }
+    }, [product.formattedUsdtPrice]);
 
-    const imageUrl =
-      images && images.length > 0
+    // Calculate prices
+    const calculatedPrices = useMemo(() => {
+      if (ratesLoading || baseUsdtPrice === 0) {
+        return {
+          nativePrice: "Loading...",
+          fiatPrice: product.formattedFiatPrice,
+          showNetworkWarning: isUnsupportedNetwork,
+        };
+      }
+
+      try {
+        const nativePrice = convertPrice(baseUsdtPrice, "USDT", "NATIVE");
+        const fiatPrice = convertPrice(baseUsdtPrice, "USDT", "FIAT");
+
+        return {
+          nativePrice: formatPrice(nativePrice, "NATIVE"),
+          fiatPrice: formatPrice(fiatPrice, "FIAT"),
+          showNetworkWarning: isUnsupportedNetwork,
+        };
+      } catch (error) {
+        console.warn("Price calculation failed:", error);
+        return {
+          nativePrice: `— ${nativeToken.symbol}`,
+          fiatPrice: product.formattedFiatPrice,
+          showNetworkWarning: isUnsupportedNetwork,
+        };
+      }
+    }, [
+      baseUsdtPrice,
+      convertPrice,
+      formatPrice,
+      nativeToken.symbol,
+      product.formattedFiatPrice,
+      ratesLoading,
+      isUnsupportedNetwork,
+    ]);
+
+    // Determine secondary price based on user preference
+    const secondaryPrice = useMemo(() => {
+      return secondaryCurrency === "USDT"
+        ? product.formattedUsdtPrice
+        : calculatedPrices.fiatPrice;
+    }, [
+      secondaryCurrency,
+      product.formattedUsdtPrice,
+      calculatedPrices.fiatPrice,
+    ]);
+
+    const imageUrl = useMemo(() => {
+      return images && images.length > 0
         ? images[0]
         : "https://placehold.co/300x300?text=No+Image";
+    }, [images]);
 
     const handleToggleFavorite = async (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      // console.log("toggleWatchlist", _id);
-      await toggleWatchlist(_id, false);
+      try {
+        await toggleWatchlist(_id, false);
+      } catch (error) {
+        console.warn("Failed to toggle watchlist:", error);
+      }
     };
 
     const navigateToProduct = (e: React.MouseEvent) => {
@@ -86,6 +159,17 @@ const ProductCard = React.memo(
             </motion.button>
           </div>
 
+          {/* Network warning indicator */}
+          {calculatedPrices.showNetworkWarning && wallet.isConnected && (
+            <div className="absolute top-12 left-2 z-10">
+              <div className="bg-yellow-500/20 border border-yellow-500/40 rounded-md px-2 py-1">
+                <span className="text-yellow-400 text-xs font-medium">
+                  Unsupported Network
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Image container */}
           <div className="w-full pt-[100%] relative bg-[#1A1B1F]/30 overflow-hidden">
             <motion.div
@@ -98,6 +182,10 @@ const ProductCard = React.memo(
                 alt={name}
                 className="max-w-full max-h-full object-contain"
                 loading="lazy"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = "https://placehold.co/300x300?text=No+Image";
+                }}
               />
             </motion.div>
           </div>
@@ -115,13 +203,8 @@ const ProductCard = React.memo(
             <h4 className="text-white text-sm sm:text-base md:text-lg font-bold truncate">
               {name}
             </h4>
-            {/* <div className="flex items-center gap-1 text-xs md:text-sm text-[#AEAEB2] py-0.5 sm:py-1">
-              <span>
-                By {typeof seller === "string" ? seller : "Unknown Seller"}
-              </span>
-              <RiVerifiedBadgeFill className="text-[#4FA3FF] text-xs" />
-            </div> */}
-            <p className="text-white/80 text-xs md:text-sm py-0.5 sm:py-1 line-clamp-1 ">
+
+            <p className="text-white/80 text-xs md:text-sm py-0.5 sm:py-1 line-clamp-1">
               {description}
             </p>
 
@@ -129,22 +212,17 @@ const ProductCard = React.memo(
             <div className="mt-auto pt-1 sm:pt-2">
               <div className="flex flex-col">
                 <span className="text-white text-sm md:text-base font-semibold">
-                  {product.formattedCeloPrice}
+                  {calculatedPrices.nativePrice}
                 </span>
                 <span className="text-[#AEAEB2] text-xs md:text-sm">
                   {secondaryPrice}
                 </span>
+                {calculatedPrices.showNetworkWarning && wallet.isConnected && (
+                  <span className="text-yellow-400 text-xs mt-1">
+                    Switch to supported network for live prices
+                  </span>
+                )}
               </div>
-
-              {/* <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="mt-2 sm:mt-3 gap-2 font-medium text-white bg-Red py-2 sm:py-2.5 rounded-md flex justify-center items-center w-full transition-all duration-300"
-                onClick={navigateToProduct}
-              >
-                <span>Buy Now</span>
-                <BsCart3 className="text-lg" />
-              </motion.button> */}
             </div>
           </div>
         </Link>
@@ -152,5 +230,4 @@ const ProductCard = React.memo(
     );
   }
 );
-
 export default ProductCard;

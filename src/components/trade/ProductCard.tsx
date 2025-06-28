@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Product } from "../../utils/types";
 import { RiVerifiedBadgeFill } from "react-icons/ri";
@@ -18,32 +18,80 @@ const ProductCard: FC<ProductCardProps> = ({
   actionType = "buy",
   isSellTab = false,
 }) => {
+  const imageUrl = useMemo(() => {
+    return product.images && product.images.length > 0
+      ? product.images[0]
+      : "https://placehold.co/300x300?text=No+Image";
+  }, [product.images]);
+
+  const sellerName = useMemo(() => {
+    return typeof product.seller === "object"
+      ? product.seller.name
+      : product.seller;
+  }, [product.seller]);
+
+  const buttonTitle = useMemo(() => {
+    return actionType === "buy" ? (isSellTab ? "SELL" : "BUY") : "VIEW DETAILS";
+  }, [actionType, isSellTab]);
+
+  const buttonPath = useMemo(() => {
+    return `/trades/buy/${product._id}`;
+  }, [product._id]);
+
+  const motionVariants = useMemo(
+    () => ({
+      initial: { opacity: 0, y: 20 },
+      animate: { opacity: 1, y: 0 },
+      hover: { scale: 1.01 },
+      imageHover: { scale: 1.05 },
+      buttonHover: { scale: 1.05 },
+      buttonTap: { scale: 0.95 },
+    }),
+    []
+  );
+
+  const transition = useMemo(
+    () => ({
+      duration: 0.5,
+      ease: [0.25, 0.1, 0.25, 1],
+    }),
+    []
+  );
+
+  const imageTransition = useMemo(
+    () => ({
+      type: "spring" as const,
+      stiffness: 300,
+      damping: 15,
+    }),
+    []
+  );
+
+  const buttonTransition = useMemo(
+    () => ({
+      type: "spring" as const,
+      stiffness: 400,
+      damping: 15,
+    }),
+    []
+  );
+
   return (
     <motion.div
       className="grid grid-cols-1 xs:grid-cols-[2fr_3fr] h-full items-center gap-6 md:gap-10 p-6 md:px-[10%] lg:px-[15%] md:py-10 bg-[#292B30] mt-8 rounded-lg"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.5,
-        ease: [0.25, 0.1, 0.25, 1],
-      }}
-      whileHover={{
-        scale: 1.01,
-        transition: { duration: 0.2 },
-      }}
+      initial={motionVariants.initial}
+      animate={motionVariants.animate}
+      transition={transition}
+      whileHover={motionVariants.hover}
       layout
     >
       <motion.img
-        src={
-          product.images && product.images.length > 0
-            ? product.images[0]
-            : "https://placehold.co/300x300?text=No+Image"
-        }
+        src={imageUrl}
         alt={product.description}
         className="w-[60%] md:w-full h-auto mx-auto md:mx-0 rounded-md lg:row-span-2"
         loading="lazy"
-        whileHover={{ scale: 1.05 }}
-        transition={{ type: "spring", stiffness: 300, damping: 15 }}
+        whileHover={motionVariants.imageHover}
+        transition={imageTransition}
       />
 
       <div className="flex flex-col w-full text-left">
@@ -51,10 +99,7 @@ const ProductCard: FC<ProductCardProps> = ({
           {product.name}
         </h3>
         <span className="flex items-center gap-2 text-sm text-[#AEAEB2] mb-4">
-          By{" "}
-          {typeof product.seller === "object"
-            ? product.seller.name
-            : product.seller}
+          By {sellerName}
           <RiVerifiedBadgeFill className="text-[#4FA3FF] text-xs" />
         </span>
 
@@ -81,21 +126,15 @@ const ProductCard: FC<ProductCardProps> = ({
       </div>
 
       <motion.div
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
+        whileHover={motionVariants.buttonHover}
+        whileTap={motionVariants.buttonTap}
         className="text-center xs:col-span-2 mx-auto xs:w-[80%] w-full lg:w-full lg:col-start-2"
-        transition={{
-          type: "spring",
-          stiffness: 400,
-          damping: 15,
-        }}
+        transition={buttonTransition}
       >
         <Button
-          title={
-            actionType === "buy" ? (isSellTab ? "SELL" : "BUY") : "VIEW DETAILS"
-          }
+          title={buttonTitle}
           className="flex justify-between items-center w-full bg-Red border-0 rounded text-white px-6 py-2 w-full transition-colors hover:bg-[#e02d37]"
-          path={`/trades/buy/${product._id}`}
+          path={buttonPath}
           icon={<FaArrowRightLong />}
           // onClick={handleButtonClick}
         />

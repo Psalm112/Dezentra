@@ -22,9 +22,9 @@ interface Props {
 }
 
 interface FormattedProductProp extends Product {
-  celoPrice: number;
+  nativePrice: number;
   fiatPrice: number;
-  formattedCeloPrice: string;
+  formattedNativePrice: string;
   formattedFiatPrice: string;
   formattedUsdtPrice: string;
 }

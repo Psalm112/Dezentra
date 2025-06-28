@@ -1,7 +1,8 @@
-import { FC } from "react";
+import { FC, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Product } from "../../utils/types";
 import Button from "../common/Button";
+
 interface IncomingOrderCardProps {
   product: Product;
   // onAccept: () => void;
@@ -13,32 +14,70 @@ const IncomingOrderCard: FC<IncomingOrderCardProps> = ({
   // onAccept,
   onReject,
 }) => {
+  const imageUrl = useMemo(() => {
+    return product.images && product.images.length > 0
+      ? product.images[0]
+      : "https://placehold.co/300x300?text=No+Image";
+  }, [product.images]);
+
+  const acceptPath = useMemo(() => {
+    return `/trades/sell/${product._id}`;
+  }, [product._id]);
+
+  const motionVariants = useMemo(
+    () => ({
+      initial: { opacity: 0, y: 20 },
+      animate: { opacity: 1, y: 0 },
+      hover: { scale: 1.01 },
+      imageHover: { scale: 1.05 },
+      buttonHover: { scale: 1.05 },
+      buttonTap: { scale: 0.95 },
+    }),
+    []
+  );
+
+  const transition = useMemo(
+    () => ({
+      duration: 0.5,
+      ease: [0.25, 0.1, 0.25, 1],
+    }),
+    []
+  );
+
+  const imageTransition = useMemo(
+    () => ({
+      type: "spring" as const,
+      stiffness: 300,
+      damping: 15,
+    }),
+    []
+  );
+
+  const buttonTransition = useMemo(
+    () => ({
+      type: "spring" as const,
+      stiffness: 400,
+      damping: 15,
+    }),
+    []
+  );
+
   return (
     <motion.div
       className="grid grid-cols-1 xs:grid-cols-[2fr_3fr] h-full items-center gap-6 md:gap-10 p-6 md:px-[10%] lg:px-[15%] md:py-10 bg-[#292B30] mt-8 rounded-lg"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.5,
-        ease: [0.25, 0.1, 0.25, 1],
-      }}
-      whileHover={{
-        scale: 1.01,
-        transition: { duration: 0.2 },
-      }}
+      initial={motionVariants.initial}
+      animate={motionVariants.animate}
+      transition={transition}
+      whileHover={motionVariants.hover}
       layout
     >
       <motion.img
-        src={
-          product.images && product.images.length > 0
-            ? product.images[0]
-            : "https://placehold.co/300x300?text=No+Image"
-        }
+        src={imageUrl}
         alt={product.description}
         className="w-[60%] md:w-full h-auto mx-auto md:mx-0 rounded-md lg:row-span-2"
         loading="lazy"
-        whileHover={{ scale: 1.05 }}
-        transition={{ type: "spring", stiffness: 300, damping: 15 }}
+        whileHover={motionVariants.imageHover}
+        transition={imageTransition}
       />
 
       <div className="flex flex-col w-full text-left">
@@ -71,9 +110,9 @@ const IncomingOrderCard: FC<IncomingOrderCardProps> = ({
 
       <div className="grid grid-cols-2 gap-4 xs:col-span-2 mx-auto xs:w-[80%] w-full lg:w-full lg:col-start-2">
         <motion.div
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 400, damping: 15 }}
+          whileHover={motionVariants.buttonHover}
+          whileTap={motionVariants.buttonTap}
+          transition={buttonTransition}
         >
           <Button
             title="REJECT"
@@ -84,15 +123,14 @@ const IncomingOrderCard: FC<IncomingOrderCardProps> = ({
         </motion.div>
 
         <motion.div
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 400, damping: 15 }}
+          whileHover={motionVariants.buttonHover}
+          whileTap={motionVariants.buttonTap}
+          transition={buttonTransition}
         >
           <Button
             title="ACCEPT"
             className="flex justify-center items-center w-full bg-Red border-0 rounded text-white px-6 py-2 transition-colors hover:bg-[#e02d37]"
-            path={`/trades/sell/${product._id}`}
-
+            path={acceptPath}
             // onClick={onAccept}
           />
         </motion.div>

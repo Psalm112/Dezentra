@@ -74,7 +74,7 @@ const TransactionConfirmation: FC<TransactionConfirmationProps> = ({
 
         const userCELOBalance = parseFloat(celoBalance || "0");
         if (userCELOBalance < 0.001) {
-          console.warn("Low CELO balance for gas fees");
+          console.warn("Low balance for gas fees");
         }
 
         // Send payment to escrow

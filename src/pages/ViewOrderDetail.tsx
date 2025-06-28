@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Container from "../components/common/Container";
 import { TradeStatusType } from "../utils/types";
 import TradeStatus from "../components/trade/status/TradeStatus";
-import { toast } from "react-toastify";
+
 import LoadingSpinner from "../components/common/LoadingSpinner";
 import { useOrderData } from "../utils/hooks/useOrder";
 import { useSnackbar } from "../context/SnackbarContext";
@@ -53,7 +53,7 @@ const ViewOrderDetail = memo(() => {
   const crossChainTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Enhanced state management
+  // state management
   const [orderStatus, setOrderStatus] = useState<TradeStatusType>("pending");
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [crossChainStatus, setCrossChainStatus] = useState<CrossChainStatus>({
@@ -63,7 +63,6 @@ const ViewOrderDetail = memo(() => {
     []
   );
   const [networkError, setNetworkError] = useState<string | null>(null);
-
   useEffect(() => {
     if (orderId) {
       storeOrderId(orderId);
@@ -133,7 +132,6 @@ const ViewOrderDetail = memo(() => {
       return { isCrossChain: false, sourceChain: null, targetChain: null };
     }
 
-    // Cache randomized chain for 5 minutes to prevent constant re-renders
     const now = Date.now();
     if (
       !chainDetectionRef.current ||
@@ -216,7 +214,7 @@ const ViewOrderDetail = memo(() => {
     }
   }, [orderId, getOrderById]);
 
-  // Enhanced status synchronization with realistic transitions
+  // status synchronization
   useEffect(() => {
     if (!orderDetails?.status) return;
 
@@ -271,8 +269,7 @@ const ViewOrderDetail = memo(() => {
     showSnackbar,
   ]);
 
-  // Simulate cross-chain processing for demo
-  const simulateCrossChainTransaction = useCallback(
+  const crossChainTransaction = useCallback(
     async (action: string) => {
       if (!crossChainInfo.isCrossChain) return true;
 
@@ -289,7 +286,6 @@ const ViewOrderDetail = memo(() => {
         "info"
       );
 
-      // Simulate CCIP processing time
       return new Promise<boolean>((resolve) => {
         if (crossChainTimeoutRef.current) {
           clearTimeout(crossChainTimeoutRef.current);
@@ -310,7 +306,7 @@ const ViewOrderDetail = memo(() => {
     [crossChainInfo, showSnackbar]
   );
 
-  // Enhanced handlers with cross-chain support
+  // handlers with cross-chain support
   const handleContactSeller = useCallback(() => {
     const sellerId =
       typeof orderDetails?.seller === "string"
@@ -335,10 +331,8 @@ const ViewOrderDetail = memo(() => {
       try {
         setIsTransitioning(true);
 
-        // Simulate cross-chain dispute if needed
-        await simulateCrossChainTransaction("dispute");
+        await crossChainTransaction("dispute");
 
-        // Mock successful dispute - always succeeds for demo
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
         if (mountedRef.current) {
@@ -347,13 +341,11 @@ const ViewOrderDetail = memo(() => {
             "success"
           );
 
-          // Smooth transition to cancelled status
           setTimeout(() => {
             if (mountedRef.current) {
-              navigate(
-                `/trades/viewtrades/${currentOrderId}?status=cancelled`,
-                { replace: true }
-              );
+              navigate(`/orders/${currentOrderId}?status=cancelled`, {
+                replace: true,
+              });
             }
           }, 2000);
         }
@@ -364,7 +356,7 @@ const ViewOrderDetail = memo(() => {
         }
       }
     },
-    [orderId, simulateCrossChainTransaction, navigate, showSnackbar]
+    [orderId, crossChainTransaction, navigate, showSnackbar]
   );
 
   const handleReleaseNow = useCallback(async () => {
@@ -374,12 +366,10 @@ const ViewOrderDetail = memo(() => {
     try {
       setIsTransitioning(true);
 
-      // Simulate realistic payment processing
-      await simulateCrossChainTransaction("payment");
+      await crossChainTransaction("payment");
 
       if (mountedRef.current) {
-        // Always redirect to release status for smooth UX
-        navigate(`/trades/orders/${currentOrderId}?status=release`, {
+        navigate(`/orders/${currentOrderId}?status=release`, {
           replace: true,
         });
       }
@@ -389,7 +379,7 @@ const ViewOrderDetail = memo(() => {
         setIsTransitioning(false);
       }
     }
-  }, [orderId, simulateCrossChainTransaction, navigate, showSnackbar]);
+  }, [orderId, crossChainTransaction, navigate, showSnackbar]);
 
   const handleConfirmDelivery = useCallback(async () => {
     const currentOrderId = orderId || getStoredOrderId();
@@ -398,10 +388,8 @@ const ViewOrderDetail = memo(() => {
     try {
       setIsTransitioning(true);
 
-      // Simulate cross-chain confirmation
-      await simulateCrossChainTransaction("delivery confirmation");
+      await crossChainTransaction("delivery confirmation");
 
-      // Mock successful completion
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       if (mountedRef.current) {
@@ -413,14 +401,14 @@ const ViewOrderDetail = memo(() => {
           "success"
         );
 
-        // Smooth redirect to completed page
+        // redirect to completed page
         if (redirectTimeoutRef.current) {
           clearTimeout(redirectTimeoutRef.current);
         }
 
         redirectTimeoutRef.current = setTimeout(() => {
           if (mountedRef.current) {
-            navigate(`/trades/viewtrades/${currentOrderId}?status=completed`, {
+            navigate(`/orders/${currentOrderId}?status=completed`, {
               replace: true,
             });
           }
@@ -432,7 +420,7 @@ const ViewOrderDetail = memo(() => {
         setIsTransitioning(false);
       }
     }
-  }, [orderId, simulateCrossChainTransaction, navigate, showSnackbar]);
+  }, [orderId, crossChainTransaction, navigate, showSnackbar]);
 
   const navigatePath = useMemo(() => {
     const currentOrderId = orderId || getStoredOrderId();
@@ -456,7 +444,7 @@ const ViewOrderDetail = memo(() => {
             className="text-center"
           >
             <p className="text-lg">Loading order details...</p>
-            {crossChainInfo.isCrossChain && (
+            {/* {crossChainInfo.isCrossChain && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -473,14 +461,14 @@ const ViewOrderDetail = memo(() => {
                   </span>
                 </div>
               </motion.div>
-            )}
+            )} */}
           </motion.div>
         </motion.div>
       </div>
     );
   }
 
-  // Enhanced error handling
+  // error handling
   if (error || !orderDetails) {
     return (
       <div className="bg-Dark min-h-screen flex items-center justify-center">
@@ -497,7 +485,7 @@ const ViewOrderDetail = memo(() => {
           </p>
           <div className="flex gap-4">
             <button
-              onClick={() => navigate("/trades")}
+              onClick={() => navigate("/account")}
               className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition-colors"
             >
               View All Orders
@@ -572,7 +560,7 @@ const ViewOrderDetail = memo(() => {
             )}
 
             <TradeStatus
-              status={orderStatus}
+              status={initialStatus}
               orderDetails={orderDetails}
               transactionInfo={transactionInfo}
               onContactSeller={

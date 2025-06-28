@@ -5,6 +5,7 @@ import React, {
   useState,
   useCallback,
   useMemo,
+  useRef,
 } from "react";
 import {
   useAccount,
@@ -12,8 +13,9 @@ import {
   useDisconnect,
   useBalance,
   useSwitchChain,
+  useChainId,
 } from "wagmi";
-import { parseUnits, formatUnits, erc20Abi, decodeEventLog } from "viem";
+import { parseUnits, formatUnits, erc20Abi, decodeEventLog, Chain } from "viem";
 import {
   useReadContract,
   useWriteContract,
@@ -34,6 +36,8 @@ import {
   wagmiConfig,
   GAS_LIMITS,
   PERFORMANCE_CONFIG,
+  getChainMetadata,
+  SUPPORTED_CHAINS,
 } from "../utils/config/web3.config";
 import { useSnackbar } from "./SnackbarContext";
 import { useCurrencyConverter } from "../utils/hooks/useCurrencyConverter";
@@ -72,7 +76,10 @@ interface ExtendedWeb3ContextType extends Omit<Web3ContextType, "wallet"> {
     destinationChainSelector: string,
     payFeesIn: 0 | 1
   ) => Promise<bigint>;
+  chain: Chain | undefined;
   chainId: number | undefined;
+  isCorrectNetwork: boolean;
+  networkStatus: "connected" | "wrong-network" | "disconnected" | "switching";
 }
 
 const Web3Context = createContext<ExtendedWeb3ContextType | undefined>(
@@ -84,6 +91,17 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const { showSnackbar } = useSnackbar();
   const { address, isConnected, chain } = useAccount();
+  const chainId = useChainId();
+
+  // const watchedChainId = useWatchChainId({
+  //   onChainChanged: (chainId: number) => {
+  //     console.log("Chain changed to:", chainId);
+  //     // Trigger immediate state updates
+  //     setNetworkStatus(
+  //       chainId === TARGET_CHAIN.id ? "connected" : "wrong-network"
+  //     );
+  //   },
+  // });
   const {
     connect,
     connectors,
@@ -91,7 +109,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     error: connectError,
   } = useConnect();
   const { disconnect } = useDisconnect();
-  const { switchChain } = useSwitchChain();
+  const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const { convertPrice, formatPrice } = useCurrencyConverter();
 
@@ -101,34 +119,118 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
   });
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState<
+    "connected" | "wrong-network" | "disconnected" | "switching"
+  >("disconnected");
 
-  const isCorrectNetwork = chain?.id === TARGET_CHAIN.id;
+  const networkStatusRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const previousChainIdRef = useRef<number | undefined>(undefined);
+  const lastRefreshRef = useRef<number>(0);
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  // AVAX balance for gas fees (since we're on Avalanche Fuji)
+  const currentChain = useMemo(() => chain, [chain]);
+  const currentChainId = useMemo(
+    () => chainId || chain?.id,
+    [chainId, chain?.id]
+  );
+
+  const isCorrectNetwork = useMemo(() => {
+    return SUPPORTED_CHAINS.some((chain) => chain.id === currentChainId);
+  }, [currentChainId]);
+
+  // network status management
+  const updateNetworkStatus = useCallback(() => {
+    if (!isConnected) {
+      setNetworkStatus("disconnected");
+      return;
+    }
+
+    if (isSwitchingChain) {
+      setNetworkStatus("switching");
+      return;
+    }
+
+    const newStatus = isCorrectNetwork ? "connected" : "wrong-network";
+    setNetworkStatus(newStatus);
+  }, [isConnected, isSwitchingChain, isCorrectNetwork]);
+
+  // Network status effect
+  // useEffect(() => {
+  //   if (networkStatusRef.current) {
+  //     clearTimeout(networkStatusRef.current);
+  //   }
+
+  //   if (previousChainIdRef.current !== currentChainId) {
+  //     previousChainIdRef.current = currentChainId;
+
+  //     networkStatusRef.current = setTimeout(() => {
+  //       updateNetworkStatus();
+
+  //       if (currentChainId && currentChainId !== TARGET_CHAIN.id) {
+  //         const currentChainName =
+  //           getChainMetadata(currentChainId)?.name || "Unknown Network";
+  //         // showSnackbar(
+  //         //   `Connected to ${currentChainName}. Switch to ${TARGET_CHAIN.name} for full functionality.`,
+  //         //   "error"
+  //         // );
+  //       } else if (currentChainId === TARGET_CHAIN.id) {
+  //         showSnackbar(`Connected to ${TARGET_CHAIN.name}`, "success");
+  //       }
+  //     }, 100);
+  //   }
+
+  //   return () => {
+  //     if (networkStatusRef.current) {
+  //       clearTimeout(networkStatusRef.current);
+  //     }
+  //   };
+  // }, [currentChainId, updateNetworkStatus, showSnackbar]);
+
+  // Connection status effect
+  useEffect(() => {
+    if (!isConnected) {
+      setNetworkStatus("disconnected");
+      setWallet((prev) => ({
+        ...prev,
+        isConnected: false,
+        address: undefined,
+        chainId: undefined,
+        balance: undefined,
+        usdtBalance: undefined,
+      }));
+    }
+  }, [isConnected]);
+
+  // AVAX balance
   const { data: avaxBalance, refetch: refetchAvaxBalance } = useBalance({
     address,
     query: {
-      enabled: !!address && isCorrectNetwork,
-      refetchInterval: PERFORMANCE_CONFIG.CACHE_DURATION / 2,
-      staleTime: PERFORMANCE_CONFIG.CACHE_DURATION / 4,
+      enabled: Boolean(address && currentChainId && isCorrectNetwork),
+      refetchInterval: false,
+      staleTime: PERFORMANCE_CONFIG.CACHE_DURATION,
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
     },
   });
 
   // Get USDT contract address
   const usdtContractAddress = useMemo(() => {
-    if (!address || !chain?.id) return undefined;
+    if (!address || !currentChainId || !isCorrectNetwork) return undefined;
+
     const contractAddr =
-      USDT_ADDRESSES[chain.id as keyof typeof USDT_ADDRESSES];
-    return contractAddr as `0x${string}` | undefined;
-  }, [address, chain?.id]);
+      USDT_ADDRESSES[currentChainId as keyof typeof USDT_ADDRESSES];
+    return contractAddr ? (contractAddr as `0x${string}`) : undefined;
+  }, [address, currentChainId, isCorrectNetwork]);
 
   // Get escrow contract address
   const escrowContractAddress = useMemo(() => {
-    if (!chain?.id) return undefined;
+    if (!currentChainId || !isCorrectNetwork) return undefined;
+
     const contractAddr =
-      ESCROW_ADDRESSES[chain.id as keyof typeof ESCROW_ADDRESSES];
-    return contractAddr as `0x${string}` | undefined;
-  }, [chain?.id]);
+      ESCROW_ADDRESSES[currentChainId as keyof typeof ESCROW_ADDRESSES];
+    return contractAddr ? (contractAddr as `0x${string}`) : undefined;
+  }, [currentChainId, isCorrectNetwork]);
 
   const {
     data: usdtBalance,
@@ -141,9 +243,12 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address && !!usdtContractAddress && isCorrectNetwork,
-      refetchInterval: PERFORMANCE_CONFIG.CACHE_DURATION,
-      staleTime: PERFORMANCE_CONFIG.CACHE_DURATION / 2,
+      enabled: Boolean(address && usdtContractAddress && isCorrectNetwork),
+      refetchInterval: false,
+      staleTime: PERFORMANCE_CONFIG.CACHE_DURATION,
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
     },
   });
 
@@ -153,8 +258,11 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     abi: erc20Abi,
     functionName: "decimals",
     query: {
-      enabled: !!usdtContractAddress && isCorrectNetwork,
+      enabled: Boolean(usdtContractAddress && isCorrectNetwork),
       staleTime: Infinity,
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
     },
   });
 
@@ -168,27 +276,43 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         ? [address, escrowContractAddress]
         : undefined,
     query: {
-      enabled:
-        !!address &&
-        !!usdtContractAddress &&
-        !!escrowContractAddress &&
-        isCorrectNetwork,
-      refetchInterval: PERFORMANCE_CONFIG.CACHE_DURATION / 4,
-      staleTime: PERFORMANCE_CONFIG.CACHE_DURATION / 8,
+      enabled: Boolean(
+        address &&
+          usdtContractAddress &&
+          escrowContractAddress &&
+          isCorrectNetwork
+      ),
+      refetchInterval: false, // Disable automatic refetching
+      staleTime: PERFORMANCE_CONFIG.CACHE_DURATION / 2,
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
     },
   });
 
-  // Optimized balance refresh function
+  // balance refresh function
   const refreshBalances = useCallback(async () => {
     if (!isConnected || !address || !isCorrectNetwork || isRefreshing) return;
 
+    const now = Date.now();
+    const timeSinceLastRefresh = now - lastRefreshRef.current;
+
+    // Throttling to prevent excessive calls (minimum 2 seconds between refreshes)
+    if (timeSinceLastRefresh < 2000) {
+      return;
+    }
+
     setIsRefreshing(true);
+    lastRefreshRef.current = now;
+
     try {
-      await Promise.allSettled([
+      const promises = [
         refetchUSDTBalance(),
         refetchAvaxBalance(),
         refetchAllowance(),
-      ]);
+      ].filter(Boolean);
+
+      await Promise.allSettled(promises);
     } catch (error) {
       console.warn("Failed to refresh some balances:", error);
     } finally {
@@ -204,32 +328,41 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     refetchAllowance,
   ]);
 
-  // Auto-refresh balances with performance optimization
+  // Auto-refresh balances
   useEffect(() => {
-    if (isConnected && address && isCorrectNetwork) {
-      const interval = setInterval(() => {
-        if (!isLoadingUSDT && !isRefreshing) {
-          refreshBalances();
-        }
-      }, PERFORMANCE_CONFIG.CACHE_DURATION);
-
-      return () => clearInterval(interval);
+    if (!isConnected || !address || !isCorrectNetwork) {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = undefined;
+      }
+      return;
     }
-  }, [
-    isConnected,
-    address,
-    isCorrectNetwork,
-    isLoadingUSDT,
-    isRefreshing,
-    refreshBalances,
-  ]);
+
+    // Clear existing interval
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+    }
+
+    autoRefreshIntervalRef.current = setInterval(() => {
+      if (!isLoadingUSDT && !isRefreshing) {
+        refreshBalances();
+      }
+    }, 300000); // 5 minutes
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = undefined;
+      }
+    };
+  }, [isConnected, address, isCorrectNetwork]);
 
   const connectWallet = useCallback(async () => {
     try {
       const connector =
         connectors.find((c) => c.name === "MetaMask") || connectors[0];
       if (connector) {
-        connect({ connector });
+        await connect({ connector });
       }
     } catch (error) {
       console.error("Failed to connect wallet:", error);
@@ -243,15 +376,33 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
   }, [disconnect, showSnackbar]);
 
   const switchToCorrectNetwork = useCallback(async () => {
+    if (currentChainId === TARGET_CHAIN.id) {
+      return;
+    }
+
+    setNetworkStatus("switching");
+
     try {
       await switchChain({ chainId: TARGET_CHAIN.id });
-      showSnackbar(`Switched to ${TARGET_CHAIN.name}`, "success");
-    } catch (error) {
+      // Status will be updated by the chain change effect
+    } catch (error: any) {
+      setNetworkStatus(
+        currentChainId === TARGET_CHAIN.id ? "connected" : "wrong-network"
+      );
+
       console.error("Failed to switch network:", error);
-      showSnackbar(`Failed to switch to ${TARGET_CHAIN.name}`, "error");
+
+      if (
+        error?.message?.includes("rejected") ||
+        error?.message?.includes("denied")
+      ) {
+        showSnackbar("Network switch cancelled", "error");
+      } else {
+        showSnackbar(`Failed to switch to ${TARGET_CHAIN.name}`, "error");
+      }
       throw error;
     }
-  }, [switchChain, showSnackbar]);
+  }, [switchChain, currentChainId, showSnackbar]);
 
   const getUSDTBalance = useCallback(async (): Promise<string> => {
     try {
@@ -263,12 +414,10 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         const formattedBalance = formatUnits(balanceBigInt, decimals);
         const numericBalance = parseFloat(formattedBalance);
 
-        const cleanBalance = numericBalance.toLocaleString("en-US", {
+        return numericBalance.toLocaleString("en-US", {
           minimumFractionDigits: 0,
           maximumFractionDigits: Math.min(decimals, 6),
         });
-
-        return cleanBalance;
       }
       return "0";
     } catch (error) {
@@ -300,7 +449,10 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
       return {
         raw: rawBalance,
         usdt: `${formatWithDecimals(numericBalance, 6)} USDT`,
-        celo: formatPrice(convertPrice(numericBalance, "USDT", "CELO"), "CELO"),
+        celo: formatPrice(
+          convertPrice(numericBalance, "USDT", "NATIVE"),
+          "NATIVE"
+        ),
         fiat: formatPrice(convertPrice(numericBalance, "USDT", "FIAT"), "FIAT"),
       };
     } catch (error) {
@@ -311,29 +463,49 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
 
   // Update wallet state
   useEffect(() => {
-    setWallet((prev) => ({
-      ...prev,
-      isConnected,
-      address,
-      chainId: chain?.id,
-      balance: avaxBalance
-        ? formatUnits(avaxBalance.value, avaxBalance.decimals)
-        : undefined,
-      error: connectError?.message || usdtError?.message,
-      isConnecting: isConnecting || isLoadingUSDT,
-      usdtBalance: convertedUSDTBalances,
-    }));
+    setWallet((prev) => {
+      const newWallet = {
+        ...prev,
+        isConnected,
+        address,
+        chainId: currentChainId,
+        balance: avaxBalance
+          ? formatUnits(avaxBalance.value, avaxBalance.decimals)
+          : undefined,
+        error: connectError?.message || usdtError?.message,
+        isConnecting: isConnecting || isLoadingUSDT || isSwitchingChain,
+        usdtBalance: convertedUSDTBalances,
+      };
+
+      // Only update if values actually changed
+      if (JSON.stringify(prev) !== JSON.stringify(newWallet)) {
+        return newWallet;
+      }
+      return prev;
+    });
   }, [
     isConnected,
     address,
-    chain,
+    currentChainId,
     avaxBalance,
     connectError,
     usdtError,
     isConnecting,
     isLoadingUSDT,
+    isSwitchingChain,
     convertedUSDTBalances,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (networkStatusRef.current) {
+        clearTimeout(networkStatusRef.current);
+      }
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Get trade details
   const getTrade = useCallback(
@@ -373,8 +545,6 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
       }
 
       try {
-        // This would typically call a fee estimation function on your contract
-        // For now, we'll use a placeholder - you may need to add this to your ABI
         const fees = await readContract(wagmiConfig, {
           address: escrowContractAddress,
           abi: Dezentra_ABI,
@@ -388,7 +558,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         return fees as bigint;
       } catch (error) {
         console.warn("Fee estimation failed, using default:", error);
-        return parseUnits("0.01", 18); // 0.01 ETH/AVAX as default
+        return parseUnits("0.01", 18);
       }
     },
     [escrowContractAddress]
@@ -397,7 +567,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
   // unified buy trade
   const buyTrade = useCallback(
     async (params: UnifiedBuyTradeParams): Promise<PaymentTransaction> => {
-      if (!address || !chain?.id) {
+      if (!address || !currentChainId) {
         throw new Error("Wallet not connected");
       }
 
@@ -437,7 +607,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         let hash: `0x${string}`;
 
         if (isLocalPurchase) {
-          // Local purchase - same as original implementation
+          // Local purchase
           try {
             const { request } = await simulateContract(wagmiConfig, {
               address: escrowContractAddress,
@@ -490,7 +660,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
           const {
             destinationChainSelector,
             destinationContract,
-            payFeesIn = 1, // Default to native token
+            payFeesIn = 1,
           } = params.crossChain;
 
           const destChainSelector = BigInt(destinationChainSelector);
@@ -510,7 +680,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
             );
           } catch (error) {
             console.warn("Cross-chain fee estimation failed:", error);
-            crossChainFees = parseUnits("0.01", 18); // Default fee
+            crossChainFees = parseUnits("0.01", 18);
           }
 
           // Gas estimation for cross-chain transaction
@@ -531,11 +701,11 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
                 payFeesIn,
               ],
               account: address,
-              value: payFeesIn === 1 ? crossChainFees : 0n, // Pay fees in native token if selected
+              value: payFeesIn === 1 ? crossChainFees : 0n,
             });
 
             gasEstimate = request.gas
-              ? (request.gas * BigInt(130)) / BigInt(100) // Higher buffer for cross-chain
+              ? (request.gas * BigInt(130)) / BigInt(100)
               : GAS_LIMITS.BUY_TRADE * BigInt(2);
           } catch (estimateError) {
             console.warn(
@@ -572,7 +742,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         // Wait for transaction receipt
         const receipt = await waitForTransactionReceipt(wagmiConfig, {
           hash,
-          timeout: isLocalPurchase ? 60000 : 120000, // Longer timeout for cross-chain
+          timeout: isLocalPurchase ? 60000 : 120000,
         });
 
         // Parse events for purchase ID and cross-chain message ID
@@ -595,7 +765,6 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
               })
               .filter(Boolean);
 
-            // Look for PurchaseCreated event
             const purchaseCreatedEvent = decodedLogs.find(
               (event: any) => event?.eventName === "PurchaseCreated"
             );
@@ -605,7 +774,6 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
               purchaseId = args.purchaseId?.toString();
             }
 
-            // Look for MessageSent event (cross-chain only)
             if (!isLocalPurchase) {
               const messageSentEvent = decodedLogs.find(
                 (event: any) => event?.eventName === "MessageSent"
@@ -621,20 +789,18 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
           }
         }
 
-        // Show appropriate success message
         const successMessage = isLocalPurchase
           ? "Purchase successful!"
           : "Cross-chain purchase initiated! Your transaction is being processed.";
 
         showSnackbar(successMessage, "success");
 
-        // Refresh balances after successful transaction
         setTimeout(
           () => {
             refreshBalances();
           },
           isLocalPurchase ? 2000 : 5000
-        ); // Longer delay for cross-chain
+        );
 
         return {
           hash,
@@ -645,7 +811,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
           status: "pending",
           timestamp: Date.now(),
           purchaseId,
-          messageId, // Include message ID for cross-chain tracking
+          messageId,
           crossChain: !isLocalPurchase,
         };
       } catch (error: any) {
@@ -653,7 +819,6 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
 
         const errorMessage = error?.message || error?.toString() || "";
 
-        // Enhanced error handling for both local and cross-chain scenarios
         if (errorMessage.includes("InsufficientFeeTokenAmount")) {
           throw new Error("Insufficient funds for cross-chain fees");
         }
@@ -705,7 +870,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     },
     [
       address,
-      chain,
+      currentChainId,
       isCorrectNetwork,
       escrowContractAddress,
       usdtContractAddress,
@@ -724,7 +889,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
       quantity: string,
       logisticsProvider: string
     ): Promise<boolean> => {
-      if (!address || !chain?.id) {
+      if (!address || !currentChainId) {
         console.warn("Wallet not connected for trade validation");
         return false;
       }
@@ -737,22 +902,17 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
       try {
         const tradeDetails = await getTrade(tradeId);
 
-        // Check if trade is active
         if (!tradeDetails.active) {
           console.warn(`Trade ${tradeId} is not active`);
           return false;
         }
 
-        // Check if sufficient quantity is available
         if (tradeDetails.remainingQuantity < BigInt(quantity)) {
           console.warn(
             `Insufficient quantity for trade ${tradeId}. Available: ${tradeDetails.remainingQuantity}, Requested: ${quantity}`
           );
           return false;
         }
-
-        // Additional validation for logistics provider could be added here
-        // For now, we'll assume the logistics provider validation is handled by the contract
 
         return true;
       } catch (error: any) {
@@ -764,11 +924,11 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         return false;
       }
     },
-    [address, chain, escrowContractAddress, getTrade]
+    [address, currentChainId, escrowContractAddress, getTrade]
   );
 
   const getCurrentAllowance = useCallback(async (): Promise<number> => {
-    if (!address || !chain?.id || !usdtContractAddress) {
+    if (!address || !currentChainId || !usdtContractAddress) {
       return 0;
     }
 
@@ -785,11 +945,17 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
       console.error("Failed to fetch allowance:", error);
       return 0;
     }
-  }, [address, chain?.id, usdtContractAddress, refetchAllowance, usdtDecimals]);
+  }, [
+    address,
+    currentChainId,
+    usdtContractAddress,
+    refetchAllowance,
+    usdtDecimals,
+  ]);
 
   const approveUSDT = useCallback(
     async (amount: string): Promise<string> => {
-      if (!address || !chain?.id) {
+      if (!address || !currentChainId) {
         throw new Error("Wallet not connected");
       }
 
@@ -802,7 +968,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
         const requiredAmount = parseFloat(amount);
 
         if (currentAllowance >= requiredAmount) {
-          return "0x0"; // Already approved
+          return "0x0";
         }
 
         const maxApproval = BigInt(
@@ -817,7 +983,6 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
           gas: GAS_LIMITS.APPROVE,
         });
 
-        // Refresh allowance after approval
         setTimeout(() => {
           refetchAllowance();
         }, 2000);
@@ -838,7 +1003,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     },
     [
       address,
-      chain,
+      currentChainId,
       usdtContractAddress,
       escrowContractAddress,
       writeContractAsync,
@@ -849,7 +1014,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
 
   const sendPayment = useCallback(
     async (params: PaymentParams): Promise<PaymentTransaction> => {
-      if (!address || !chain?.id) {
+      if (!address || !currentChainId) {
         throw new Error("Wallet not connected");
       }
 
@@ -888,7 +1053,6 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
 
         showSnackbar("Payment sent! Waiting for confirmation...", "success");
 
-        // Refresh balances after payment
         setTimeout(() => {
           refreshBalances();
         }, 2000);
@@ -902,7 +1066,7 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     },
     [
       address,
-      chain,
+      currentChainId,
       isCorrectNetwork,
       switchToCorrectNetwork,
       usdtContractAddress,
@@ -930,7 +1094,9 @@ export const Web3Provider: React.FC<{ children: React.ReactNode }> = ({
     refreshBalances,
     estimateCrossChainFees,
     isCorrectNetwork,
-    chainId: chain?.id,
+    chain: currentChain,
+    chainId: currentChainId,
+    networkStatus,
   };
 
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>;

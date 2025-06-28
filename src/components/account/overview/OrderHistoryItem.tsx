@@ -7,7 +7,7 @@ import { Order } from "../../../utils/types";
 import { useNavigate } from "react-router-dom";
 import { useCurrency } from "../../../context/CurrencyContext";
 
-interface EnhancedOrder extends Order {
+interface OrderItem extends Order {
   formattedDate?: string;
   formattedUsdtPrice?: string;
   formattedCeloPrice?: string;
@@ -21,7 +21,7 @@ interface EnhancedOrder extends Order {
   index?: number;
 }
 
-const OrderHistoryItem: React.FC<EnhancedOrder> = React.memo((item) => {
+const OrderHistoryItem: React.FC<OrderItem> = React.memo((item) => {
   const navigate = useNavigate();
   const { secondaryCurrency } = useCurrency();
 

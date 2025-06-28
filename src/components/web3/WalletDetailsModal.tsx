@@ -23,6 +23,7 @@ import { truncateAddress, copyToClipboard } from "../../utils/web3.utils";
 import { useSnackbar } from "../../context/SnackbarContext";
 import { useCurrencyConverter } from "../../utils/hooks/useCurrencyConverter";
 import { useCurrency } from "../../context/CurrencyContext";
+import NetworkSwitcher from "./NetworkSwitcher";
 
 interface WalletDetailsModalProps {
   isOpen: boolean;
@@ -37,8 +38,14 @@ const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({
 }) => {
   const { showSnackbar } = useSnackbar();
   const { secondaryCurrency } = useCurrency();
-  const { wallet, disconnectWallet, isCorrectNetwork, switchToCorrectNetwork } =
-    useWeb3();
+  const {
+    wallet,
+    disconnectWallet,
+    isCorrectNetwork,
+    switchToCorrectNetwork,
+    chainId,
+    chain,
+  } = useWeb3();
 
   const {
     userCountry,
@@ -52,10 +59,10 @@ const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Memoized chain metadata
+  //chain metadata
   const currentChainMetadata = useMemo(() => {
-    return wallet.chainId ? getChainMetadata(wallet.chainId) : null;
-  }, [wallet.chainId]);
+    return chainId ? getChainMetadata(chainId) : null;
+  }, [chainId]);
 
   const nativeCurrency = currentChainMetadata?.nativeCurrency || "ETH";
   const blockExplorer = currentChainMetadata?.blockExplorer;
@@ -83,6 +90,8 @@ const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({
       copyToClipboard(wallet.address);
       showSnackbar("Address copied to clipboard", "success");
     }
+
+    console.log("chain", chain);
   };
 
   const handleDisconnect = () => {
@@ -165,12 +174,12 @@ const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({
   const nativeNumericValue = wallet.balance ? parseFloat(wallet.balance) : 0;
 
   const fiatUsdtValue = convertPrice(usdtNumericValue, "USDT", "FIAT");
-  const fiatNativeValue = convertPrice(nativeNumericValue, "CELO", "FIAT"); // Will need to be dynamic
+  const fiatNativeValue = convertPrice(nativeNumericValue, "NATIVE", "FIAT");
   const totalFiatValue = fiatUsdtValue + fiatNativeValue;
 
   // Network status component
   const NetworkStatus = () => {
-    if (!wallet.chainId) {
+    if (!chainId) {
       return (
         <div className="p-3 bg-gray-500/10 border border-gray-500/30 rounded-lg">
           <div className="flex items-center gap-2">
@@ -183,98 +192,46 @@ const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({
 
     if (!isCorrectNetwork) {
       return (
-        <div className="p-3 bg-Red/10 border border-Red/30 rounded-lg">
-          <div className="flex items-start gap-2">
-            <HiExclamationTriangle className="w-5 h-5 text-Red flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-Red font-medium">Wrong Network</p>
-              <p className="text-sm text-Red/80 mt-1">
-                Switch to {TARGET_CHAIN.name} for optimal experience
-              </p>
-              <Button
-                title={`Switch to ${TARGET_CHAIN.name}`}
-                icon={<HiArrowsRightLeft className="w-4 h-4" />}
-                onClick={handleSwitchNetwork}
-                className="mt-2 bg-Red hover:bg-Red/80 text-white text-sm px-3 py-1.5 transition-all duration-200"
-              />
+        <div className="space-y-3">
+          <div className="p-3 bg-Red/10 border border-Red/30 rounded-lg">
+            <div className="flex items-start gap-2">
+              <HiExclamationTriangle className="w-5 h-5 text-Red flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-Red font-medium">Network Switch Required</p>
+                <p className="text-sm text-Red/80 mt-1">
+                  Switch to a supported network for optimal experience
+                </p>
+              </div>
             </div>
           </div>
+          <NetworkSwitcher
+            variant="dropdown"
+            size="md"
+            showCurrentNetwork={false}
+          />
         </div>
       );
     }
 
     return (
-      <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          <span className="text-green-400 font-medium">
-            {currentChainMetadata?.name || "Connected"}
-          </span>
-          {wallet.chainId !== TARGET_CHAIN.id && (
-            <span className="text-xs text-green-400/70 bg-green-500/20 px-2 py-0.5 rounded-full">
-              Cross-chain Ready
-            </span>
-          )}
+      <div className="space-y-3">
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <NetworkSwitcher
+            variant="inline"
+            size="md"
+            showCurrentNetwork={true}
+          />
         </div>
+        <NetworkSwitcher variant="dropdown" size="sm" className="text-xs" />
       </div>
     );
   };
 
   // Supported chains display
-  const SupportedChains = () => (
-    <div className="space-y-2">
-      <h4 className="text-sm font-medium text-gray-400 flex items-center gap-2">
-        <HiGlobeAlt className="w-4 h-4" />
-        Supported Networks
-      </h4>
-      <div className="grid grid-cols-2 gap-2">
-        {SUPPORTED_CHAINS.map((chain) => {
-          const metadata = CHAIN_METADATA[chain.id];
-          const isActive = wallet.chainId === chain.id;
-          const isPrimary = chain.id === TARGET_CHAIN.id;
 
-          return (
-            <div
-              key={chain.id}
-              className={`p-2 rounded-lg text-xs transition-all duration-200 ${
-                isActive
-                  ? "bg-green-500/20 border border-green-500/40 text-green-300"
-                  : isPrimary
-                  ? "bg-Red/10 border border-Red/30 text-Red/80"
-                  : "bg-gray-800/50 border border-gray-700/50 text-gray-400"
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {metadata?.icon ? (
-                  <img
-                    src={metadata.icon}
-                    alt={metadata.shortName}
-                    className="w-3 h-3 rounded-full"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                ) : (
-                  <div className="w-3 h-3 rounded-full bg-gray-500 flex items-center justify-center text-[8px] font-bold text-white">
-                    {metadata?.shortName?.charAt(0) || "?"}
-                  </div>
-                )}
-                <span className="font-medium">{metadata?.shortName}</span>
-                {isActive && (
-                  <div className="w-1 h-1 bg-green-500 rounded-full ml-auto" />
-                )}
-                {isPrimary && !isActive && (
-                  <span className="text-[8px] text-Red/60 ml-auto">
-                    PRIMARY
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+  // const SupportedChains = () => (
+  //   <NetworkSwitcher variant="grid" size="sm" showCurrentNetwork={false} />
+  // );
 
   return (
     <Modal
@@ -324,7 +281,7 @@ const WalletDetailsModal: React.FC<WalletDetailsModalProps> = ({
         </div>
 
         {/* Supported Networks */}
-        <SupportedChains />
+        {/* <SupportedChains /> */}
 
         {/* Portfolio Overview */}
         <div className="space-y-3">

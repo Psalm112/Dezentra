@@ -79,7 +79,7 @@ const WalletEducationModal: React.FC<WalletEducationModalProps> = ({
   const isLastStep = currentStep === educationSteps.length - 1;
   const isFirstStep = currentStep === 0;
 
-  // Enhanced pro tips with cross-chain focus
+  // pro tips with cross-chain focus
   const getProTip = useCallback(() => {
     const tips = [
       "Most wallets like MetaMask support multiple networks - you can switch between them easily.",
@@ -110,7 +110,7 @@ const WalletEducationModal: React.FC<WalletEducationModalProps> = ({
       maxWidth="md:max-w-lg"
     >
       <div className="space-y-6">
-        {/* Enhanced Progress Bar */}
+        {/* Progress Bar */}
         <div className="flex items-center gap-2">
           {educationSteps.map((_, index) => (
             <div
@@ -124,7 +124,7 @@ const WalletEducationModal: React.FC<WalletEducationModalProps> = ({
           ))}
         </div>
 
-        {/* Step Content with Enhanced Animations */}
+        {/* Step Content  */}
         <AnimatePresence mode="wait">
           <motion.div
             key={currentStep}
@@ -203,7 +203,7 @@ const WalletEducationModal: React.FC<WalletEducationModalProps> = ({
           </motion.div>
         </AnimatePresence>
 
-        {/* Enhanced Navigation */}
+        {/* Navigation */}
         <div className="flex items-center justify-between">
           <Button
             title={isFirstStep ? "Back" : "Previous"}
@@ -247,7 +247,7 @@ const WalletEducationModal: React.FC<WalletEducationModalProps> = ({
           )}
         </div>
 
-        {/* Enhanced Pro Tips */}
+        {/* Pro Tips */}
         <div className="border-t border-Red/20 pt-4">
           <motion.div
             key={currentStep}

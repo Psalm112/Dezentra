@@ -18,6 +18,7 @@ import { formatCurrency } from "../../utils/web3.utils";
 import { useSnackbar } from "../../context/SnackbarContext";
 import { Order } from "../../utils/types";
 import { parseWeb3Error } from "../../utils/errorParser";
+import NetworkSwitcher from "./NetworkSwitcher";
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -86,6 +87,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     validateTradeBeforePurchase,
     refreshBalances,
     estimateCrossChainFees,
+    chainId,
   } = useWeb3();
 
   const { getSupportedChains } = useSmartContract();
@@ -99,22 +101,18 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
-  const [selectedDestinationChain, setSelectedDestinationChain] = useState<
-    number | null
-  >(null);
+  const [selectedChain, setSelectedChain] = useState<number | null>(null);
   const [availableChains, setAvailableChains] = useState<ChainInfo[]>([]);
   const [isLoadingChains, setIsLoadingChains] = useState(true);
   const [crossChainFees, setCrossChainFees] = useState<string>("0");
 
   const currentChain = useMemo(() => {
-    return wallet.chainId ? SUPPORTED_CHAINS[wallet.chainId] : null;
-  }, [wallet.chainId]);
+    return chainId ? SUPPORTED_CHAINS[chainId] : null;
+  }, [chainId]);
 
   const destinationChain = useMemo(() => {
-    return selectedDestinationChain
-      ? SUPPORTED_CHAINS[selectedDestinationChain]
-      : null;
-  }, [selectedDestinationChain]);
+    return selectedChain ? SUPPORTED_CHAINS[selectedChain] : null;
+  }, [selectedChain]);
 
   const isCrossChainPayment = useMemo(() => {
     return (
@@ -141,10 +139,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     [wallet.balance]
   );
 
-  const hasInsufficientBalance = useMemo(
-    () => balanceNumber < orderAmount,
-    [balanceNumber, orderAmount]
-  );
   const hasInsufficientGas = useMemo(() => gasBalance < 0.01, [gasBalance]);
 
   // Load supported chains
@@ -161,20 +155,20 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
         setAvailableChains(mappedChains);
 
-        if (!selectedDestinationChain) {
+        if (!selectedChain) {
           const defaultChain =
-            mappedChains.find((chain) => chain.chainId === wallet.chainId) ||
+            mappedChains.find((chain) => chain.chainId === chainId) ||
             mappedChains.find((chain) => chain.chainId === 43113) ||
             mappedChains[0];
           if (defaultChain) {
-            setSelectedDestinationChain(defaultChain.chainId);
+            setSelectedChain(defaultChain.chainId);
           }
         }
       } catch (error) {
         console.error("Failed to load supported chains:", error);
         setAvailableChains(Object.values(SUPPORTED_CHAINS));
-        if (!selectedDestinationChain) {
-          setSelectedDestinationChain(43113);
+        if (!selectedChain) {
+          setSelectedChain(43113);
         }
       } finally {
         setIsLoadingChains(false);
@@ -182,7 +176,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     };
 
     loadSupportedChains();
-  }, [isOpen, getSupportedChains, wallet.chainId, selectedDestinationChain]);
+  }, [isOpen, getSupportedChains, chainId, selectedChain]);
 
   // Estimate cross-chain fees
   useEffect(() => {
@@ -274,25 +268,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       }
     }
 
-    if (hasInsufficientBalance) {
-      setError(
-        `Insufficient USDT balance. Required: ${formatCurrency(
-          orderAmount
-        )} USDT`
-      );
-      setStep("error");
-      return;
-    }
-
-    if (hasInsufficientGas) {
-      const nativeCurrency = currentChain?.nativeCurrency || "native tokens";
-      setError(
-        `Insufficient ${nativeCurrency} for transaction fees. Please add some ${nativeCurrency} to your wallet.`
-      );
-      setStep("error");
-      return;
-    }
-
     try {
       setIsProcessing(true);
       setStep("processing");
@@ -305,11 +280,11 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         orderDetails.logisticsProviderWalletAddress[0]
       );
 
-      if (!isValidTrade) {
-        throw new Error(
-          "This product is no longer available. Please refresh and try another item."
-        );
-      }
+      // if (!isValidTrade) {
+      //   throw new Error(
+      //     "This product is no longer available. Please refresh and try another item."
+      //   );
+      // }
 
       // Handle approval if needed
       if (needsApproval) {
@@ -443,7 +418,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   }, [
     wallet.isConnected,
     isCorrectNetwork,
-    hasInsufficientBalance,
     hasInsufficientGas,
     needsApproval,
     orderDetails,
@@ -485,32 +459,16 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     return wallet.usdtBalance?.usdt || "0 USDT";
   }, [wallet.usdtBalance?.usdt]);
 
-  const renderDestinationChainSelector = () => (
+  const renderSupportedChainSelector = () => (
     <div className="space-y-3">
-      <h3 className="text-lg font-semibold text-white">Destination Chain</h3>
-      {isLoadingChains ? (
-        <div className="flex items-center justify-center py-4">
-          <div className="w-5 h-5 border-2 border-Red/30 border-t-Red rounded-full animate-spin" />
-          <span className="ml-2 text-gray-400">Loading chains...</span>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          {availableChains.map((chain) => (
-            <button
-              key={chain.chainId}
-              onClick={() => setSelectedDestinationChain(chain.chainId)}
-              className={`p-3 rounded-lg border transition-all ${
-                selectedDestinationChain === chain.chainId
-                  ? "border-Red bg-Red/20 text-Red"
-                  : "border-Red/20 bg-Dark/50 text-gray-300 hover:border-Red/40"
-              }`}
-            >
-              <div className="text-sm font-medium">{chain.name}</div>
-              <div className="text-xs opacity-75">{chain.shortName}</div>
-            </button>
-          ))}
-        </div>
-      )}
+      <h3 className="text-lg font-semibold text-white">Supported Networks</h3>
+      <NetworkSwitcher
+        selectedChainId={selectedChain ?? undefined}
+        onChainSelect={setSelectedChain}
+        variant="grid"
+        size="md"
+        disabled={isProcessing || step !== "review"}
+      />
     </div>
   );
 
@@ -519,7 +477,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       case "review":
         return (
           <div className="space-y-6">
-            {renderDestinationChainSelector()}
+            {renderSupportedChainSelector()}
 
             {isCrossChainPayment && (
               <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 space-y-2">
@@ -613,19 +571,19 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               </div>
             </div>
 
-            {needsApproval && (
-              <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3">
-                <div className="flex items-center gap-2">
-                  <HiExclamationTriangle className="w-4 h-4 text-yellow-400" />
-                  <span className="text-yellow-400 text-sm">
-                    USDT spending approval required for this transaction
-                  </span>
-                </div>
+            {/* {needsApproval && ( */}
+            <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3">
+              <div className="flex items-center gap-2">
+                <HiExclamationTriangle className="w-4 h-4 text-yellow-400" />
+                <span className="text-yellow-400 text-sm">
+                  USDT spending approval required for this transaction
+                </span>
               </div>
-            )}
+            </div>
+            {/* )} */}
 
             {(!wallet.isConnected ||
-              hasInsufficientBalance ||
+              /* hasInsufficientBalance || */
               hasInsufficientGas ||
               !isCorrectNetwork) && (
               <div className="space-y-2">
@@ -640,6 +598,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   </div>
                 )}
 
+                {/*
                 {wallet.isConnected && hasInsufficientBalance && (
                   <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
                     <div className="flex items-center gap-2">
@@ -651,6 +610,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                     </div>
                   </div>
                 )}
+                */}
 
                 {wallet.isConnected && hasInsufficientGas && (
                   <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-3">
@@ -700,8 +660,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 isProcessing ||
                 isLoadingBalance ||
                 isLoadingChains ||
-                (wallet.isConnected &&
-                  (hasInsufficientBalance || hasInsufficientGas))
+                (!wallet.isConnected &&
+                  /* hasInsufficientBalance || */ hasInsufficientGas)
               }
               className="flex items-center justify-center w-full bg-Red hover:bg-Red/80 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-lg py-4 font-semibold transition-all duration-200"
             />

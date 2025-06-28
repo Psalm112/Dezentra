@@ -50,6 +50,11 @@ interface UpdateOrderPayload {
   logisticsProviderWalletAddress?: string;
 }
 
+// Navigation constants
+const NAVIGATION_DELAY = 1500;
+const FALLBACK_NAVIGATION_DELAY = 2000;
+const ORDER_STATUS_UPDATE_TIMEOUT = 5000;
+
 const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
   tradeDetails,
   orderDetails: details,
@@ -63,38 +68,31 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
   const navigate = useNavigate();
   const { showSnackbar } = useSnackbar();
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
-  const { wallet, connectWallet, validateTradeBeforePurchase } = useWeb3();
+  const { wallet, connectWallet } = useWeb3();
   const { usdtBalance, refetch: refetchBalance } = useWalletBalance();
   const { changeOrderStatus, currentOrder } = useOrderData();
 
-  // Enhanced state management for smooth UX
   const [paymentState, setPaymentState] = useState<{
     isProcessing: boolean;
     isCompleted: boolean;
     completedAt: number | null;
+    navigationTriggered: boolean;
   }>({
     isProcessing: false,
     isCompleted: false,
     completedAt: null,
-  });
-
-  const [tradeValidation, setTradeValidation] = useState<{
-    isValid: boolean;
-    isLoading: boolean;
-    error: string | null;
-  }>({
-    isValid: true,
-    isLoading: false,
-    error: null,
+    navigationTriggered: false,
   });
 
   const [showWalletModal, setShowWalletModal] = useState(false);
+
+  // Refs for cleanup management
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const balanceRefetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const tradeValidationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const orderStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [timeRemaining, setTimeRemaining] = useState<TimeRemaining>(() => ({
     minutes: 9,
@@ -107,7 +105,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
   const [selectedLogisticsProvider, setSelectedLogisticsProvider] =
     useState<any>(null);
 
-  // Memoized order details with performance optimization
   const orderDetails = useMemo(() => {
     if (!details) return details;
     return {
@@ -128,106 +125,41 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     [txInfo?.buyerName, txInfo?.sellerName]
   );
 
-  // Store order ID for persistence
   useEffect(() => {
     if (orderId) {
       storeOrderId(orderId);
     }
   }, [orderId]);
 
-  // Cleanup effect
+  // cleanup effect
   useEffect(() => {
     mountedRef.current = true;
 
     return () => {
       mountedRef.current = false;
-      [
-        timerRef,
-        abortControllerRef,
-        balanceRefetchTimeoutRef,
-        tradeValidationTimeoutRef,
-        redirectTimeoutRef,
-      ].forEach((ref) => {
-        if (ref.current) {
-          if (ref.current instanceof AbortController) {
-            ref.current.abort();
-          } else {
-            clearTimeout(ref.current as NodeJS.Timeout);
-            clearInterval(ref.current as NodeJS.Timeout);
-          }
+
+      // Clear all timeouts and intervals
+      const timeouts = [
+        timerRef.current,
+        balanceRefetchTimeoutRef.current,
+        navigationTimeoutRef.current,
+        orderStatusTimeoutRef.current,
+      ];
+
+      timeouts.forEach((timeout) => {
+        if (timeout) {
+          clearTimeout(timeout);
         }
       });
+
+      // Abort any pending requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
-  // Enhanced trade validation with debounce
-  useEffect(() => {
-    const validateTrade = async () => {
-      if (
-        !orderDetails?.product?.tradeId ||
-        !wallet.isConnected ||
-        tradeValidation.isLoading ||
-        paymentState.isCompleted
-      )
-        return;
-
-      if (tradeValidationTimeoutRef.current) {
-        clearTimeout(tradeValidationTimeoutRef.current);
-      }
-
-      tradeValidationTimeoutRef.current = setTimeout(async () => {
-        if (!mountedRef.current) return;
-
-        setTradeValidation({ isValid: true, isLoading: true, error: null });
-
-        try {
-          // Simulate validation for hackathon demo
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-
-          const isValid =
-            (await validateTradeBeforePurchase?.(
-              orderDetails.product.tradeId,
-              orderDetails.quantity.toString(),
-              orderDetails.logisticsProviderWalletAddress[0]
-            )) ?? true; // Default to true if validation fails
-
-          if (mountedRef.current) {
-            setTradeValidation({
-              isValid,
-              isLoading: false,
-              error: isValid ? null : "Product availability changed",
-            });
-          }
-        } catch (error) {
-          if (mountedRef.current) {
-            console.warn("Trade validation error:", error);
-            // For hackathon demo, assume product is available
-            setTradeValidation({
-              isValid: true,
-              isLoading: false,
-              error: null,
-            });
-          }
-        }
-      }, 1500);
-    };
-
-    validateTrade();
-
-    return () => {
-      if (tradeValidationTimeoutRef.current) {
-        clearTimeout(tradeValidationTimeoutRef.current);
-      }
-    };
-  }, [
-    orderDetails?.product?.tradeId,
-    orderDetails?.quantity,
-    orderDetails?.logisticsProviderWalletAddress?.[0],
-    wallet.isConnected,
-    paymentState.isCompleted,
-  ]);
-
-  // Enhanced order validation
+  // Order validation
   const orderValidation = useMemo(() => {
     try {
       if (paymentState.isCompleted) {
@@ -248,20 +180,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
         };
       }
 
-      if (tradeValidation.isLoading) {
-        return {
-          isValid: false,
-          error: "Verifying product availability...",
-        };
-      }
-
-      if (!tradeValidation.isValid) {
-        return {
-          isValid: false,
-          error: tradeValidation.error || "Product not available",
-        };
-      }
-
       return { isValid: true, error: null };
     } catch (error) {
       console.error("Order validation error:", error);
@@ -274,13 +192,10 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     orderDetails?.product?.price,
     orderDetails?.quantity,
     quantity,
-    tradeValidation.isValid,
-    tradeValidation.isLoading,
-    tradeValidation.error,
     paymentState.isCompleted,
   ]);
 
-  // Enhanced calculations with performance optimization
+  // Calculations
   const calculations = useMemo(() => {
     if (!orderValidation.isValid || !orderDetails?.product?.price) {
       return {
@@ -345,7 +260,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     }
   }, []);
 
-  // Enhanced pay button text with state management
   const payButtonText = useMemo(() => {
     if (paymentState.isCompleted) {
       return "Payment Completed ✓";
@@ -355,32 +269,17 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
       return "Processing Payment...";
     }
 
-    if (tradeValidation.isLoading) {
-      return "Checking availability...";
-    }
-
-    if (!tradeValidation.isValid) {
-      return "Product unavailable";
-    }
-
     if (!wallet.isConnected) {
       return "Connect Wallet to Pay";
     }
-
-    if (!calculations.hasSufficientBalance) {
-      return "Insufficient Balance";
-    }
-
+    if (!calculations.hasSufficientBalance) return "Insufficient Balance";
     return `Pay ${calculations.totalAmount.toFixed(2)} USDT`;
   }, [
     paymentState.isCompleted,
     paymentState.isProcessing,
     loading,
-    tradeValidation.isLoading,
-    tradeValidation.isValid,
     wallet.isConnected,
     calculations.totalAmount,
-    calculations.hasSufficientBalance,
   ]);
 
   // Set initial quantity
@@ -417,7 +316,7 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     return () => clearInterval(timer);
   }, [showTimer, paymentState.isCompleted]);
 
-  // Debounced balance refetch
+  // Balance refetch with debouncing
   const debouncedRefetchBalance = useCallback(() => {
     if (balanceRefetchTimeoutRef.current) {
       clearTimeout(balanceRefetchTimeoutRef.current);
@@ -436,7 +335,152 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     }, 1000);
   }, [refetchBalance, isLoadingBalance]);
 
-  // Enhanced payment handler with realistic flow
+  // navigation handler
+  // const handleNavigation = useCallback(
+  //   (transaction: PaymentTransaction) => {
+  //     // Prevent multiple navigation attempts
+  //     if (paymentState.navigationTriggered) {
+  //       return;
+  //     }
+
+  //     setPaymentState((prev) => ({ ...prev, navigationTriggered: true }));
+
+  //     const performNavigation = () => {
+  //       if (!mountedRef.current) return;
+
+  //       try {
+  //         if (navigatePath) {
+  //           //             const targetPath = navigatePath.replace(
+  //           //               "status=release",
+  //           //               "status=accepted"
+  //           //             );
+  //           // targetPath,
+  //           //   {
+  //           //     replace: true,
+  //           //     state: {
+  //           //       paymentCompleted: true,
+  //           //       transaction: transaction,
+  //           //       timestamp: Date.now(),
+  //           //     },
+  //           //   };
+  //           navigate(navigatePath);
+  //         } else if (onReleaseNow) {
+  //           onReleaseNow();
+  //         }
+  //       } catch (error) {
+  //         console.error("Navigation error:", error);
+  //         // Fallback navigation attempt
+  //         if (navigatePath) {
+  //           window.location.href = navigatePath.replace(
+  //             "status=release",
+  //             "status=accepted"
+  //           );
+  //         }
+  //       }
+  //     };
+
+  //     // Set navigation timeout with proper cleanup
+  //     if (navigationTimeoutRef.current) {
+  //       clearTimeout(navigationTimeoutRef.current);
+  //     }
+
+  //     navigationTimeoutRef.current = setTimeout(
+  //       performNavigation,
+  //       NAVIGATION_DELAY
+  //     );
+  //   },
+  //   [navigate, navigatePath, onReleaseNow, paymentState.navigationTriggered]
+  // );
+
+  // payment success handler
+  const handlePaymentSuccess = useCallback(
+    async (transaction: PaymentTransaction) => {
+      if (!mountedRef.current) return;
+
+      // Close payment modal immediately
+      setIsPaymentModalOpen(false);
+
+      try {
+        // Update payment state
+        setPaymentState({
+          isProcessing: false,
+          isCompleted: true,
+          completedAt: Date.now(),
+          navigationTriggered: false,
+        });
+
+        showSnackbar("Payment completed successfully!", "success");
+
+        // Update order status in background with timeout
+        const currentOrderId = getStoredOrderId();
+        if (currentOrder?._id || currentOrderId) {
+          const orderStatusPromise = changeOrderStatus(
+            currentOrder?._id || currentOrderId!,
+            "accepted",
+            false
+          );
+
+          if (orderStatusTimeoutRef.current) {
+            clearTimeout(orderStatusTimeoutRef.current);
+          }
+
+          orderStatusTimeoutRef.current = setTimeout(() => {
+            console.warn("Order status update timeout");
+          }, ORDER_STATUS_UPDATE_TIMEOUT);
+
+          try {
+            await Promise.race([
+              orderStatusPromise,
+              new Promise((_, reject) =>
+                setTimeout(
+                  () => reject(new Error("Order status update timeout")),
+                  ORDER_STATUS_UPDATE_TIMEOUT
+                )
+              ),
+            ]);
+
+            if (orderStatusTimeoutRef.current) {
+              clearTimeout(orderStatusTimeoutRef.current);
+            }
+          } catch (error) {
+            console.warn("Background order status update failed:", error);
+          }
+        }
+
+        // Clear stored order ID
+        clearStoredOrderId();
+
+        if (navigationTimeoutRef.current) {
+          clearTimeout(navigationTimeoutRef.current);
+        }
+
+        navigationTimeoutRef.current = setTimeout(() => {
+          if (mountedRef.current && navigatePath) {
+            navigate(navigatePath, {
+              replace: true,
+              state: {
+                paymentCompleted: true,
+                transaction: transaction,
+                timestamp: Date.now(),
+              },
+            });
+          }
+        }, NAVIGATION_DELAY);
+      } catch (error) {
+        console.error("Post-payment processing error:", error);
+
+        // Fallback navigation on error
+        setTimeout(() => {
+          if (mountedRef.current && navigatePath) {
+            navigate(navigatePath, { replace: true });
+          }
+        }, FALLBACK_NAVIGATION_DELAY);
+      }
+    },
+    [showSnackbar, changeOrderStatus, currentOrder, navigatePath, navigate]
+  );
+
+  // Payment handler
   const handlePayNow = useCallback(async () => {
     if (
       !orderValidation.isValid ||
@@ -463,16 +507,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
 
       if (controller.signal.aborted) return;
 
-      if (!calculations.hasSufficientBalance) {
-        showSnackbar(
-          `Insufficient USDT balance. Required: ${calculations.requiredAmount.toFixed(
-            2
-          )} USDT`,
-          "error"
-        );
-        return;
-      }
-
       setIsPaymentModalOpen(true);
     } catch (error) {
       if (!controller.signal.aborted && mountedRef.current) {
@@ -496,107 +530,9 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     paymentState.isProcessing,
     paymentState.isCompleted,
     wallet.isConnected,
-    calculations.hasSufficientBalance,
-    calculations.requiredAmount,
     debouncedRefetchBalance,
     showSnackbar,
   ]);
-
-  // Enhanced payment success handler with smooth transitions
-  const handlePaymentSuccess = useCallback(
-    async (transaction: PaymentTransaction) => {
-      setIsPaymentModalOpen(false);
-
-      if (!mountedRef.current) return;
-
-      try {
-        // Set payment as completed immediately for smooth UX
-        setPaymentState({
-          isProcessing: false,
-          isCompleted: true,
-          completedAt: Date.now(),
-        });
-
-        // Show success message immediately
-        showSnackbar("Payment completed successfully!", "success");
-
-        // Attempt to update order status in background
-        const currentOrderId = getStoredOrderId();
-        if (currentOrder?._id || currentOrderId) {
-          try {
-            await changeOrderStatus(
-              currentOrder?._id || currentOrderId!,
-              {
-                status: "accepted",
-                purchaseId: transaction.purchaseId,
-              },
-              false // Don't show loading for background update
-            );
-          } catch (error) {
-            console.warn("Background order status update failed:", error);
-            // Don't show error to user as payment was successful
-          }
-        }
-
-        // Clear stored order ID
-        clearStoredOrderId();
-
-        // Smooth redirect with delay for better UX
-        if (redirectTimeoutRef.current) {
-          clearTimeout(redirectTimeoutRef.current);
-        }
-
-        redirectTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current) {
-            if (navigatePath) {
-              navigate(
-                navigatePath.replace("status=release", "status=accepted"),
-                {
-                  replace: true,
-                  state: {
-                    paymentCompleted: true,
-                    transaction: transaction,
-                  },
-                }
-              );
-            } else if (onReleaseNow) {
-              onReleaseNow();
-            }
-          }
-        }, 1500);
-      } catch (error) {
-        console.error("Post-payment processing error:", error);
-        // Still redirect on error since payment was successful
-        if (redirectTimeoutRef.current) {
-          clearTimeout(redirectTimeoutRef.current);
-        }
-        redirectTimeoutRef.current = setTimeout(() => {
-          if (navigatePath) {
-            navigate(
-              navigatePath.replace("status=release", "status=accepted"),
-              {
-                replace: true,
-                state: {
-                  paymentCompleted: true,
-                  transaction: transaction,
-                },
-              }
-            );
-          } else if (onReleaseNow) {
-            onReleaseNow();
-          }
-        }, 500);
-      }
-    },
-    [
-      navigate,
-      navigatePath,
-      showSnackbar,
-      changeOrderStatus,
-      currentOrder,
-      onReleaseNow,
-    ]
-  );
 
   // Update order handler
   const handleUpdateOrder = useCallback(async () => {
@@ -698,7 +634,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     [paymentState.isCompleted]
   );
 
-  // Memoized components for performance
   const Payment = useMemo(
     () =>
       orderDetails && escrowAddress ? (
@@ -749,20 +684,17 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
             : calculations.hasSufficientBalance &&
               !loading &&
               !paymentState.isProcessing &&
-              tradeValidation.isValid &&
               orderValidation.isValid
             ? "bg-Red hover:bg-[#e02d37]"
             : "bg-gray-600 opacity-75"
         }`}
         onClick={handlePayNow}
         disabled={
+          !calculations.hasSufficientBalance ||
           paymentState.isCompleted ||
-          (!calculations.hasSufficientBalance && wallet.isConnected) ||
           loading ||
           paymentState.isProcessing ||
-          !orderValidation.isValid ||
-          !tradeValidation.isValid ||
-          tradeValidation.isLoading
+          !orderValidation.isValid
         }
       />
     ),
@@ -773,9 +705,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
       calculations.hasSufficientBalance,
       loading,
       orderValidation.isValid,
-      tradeValidation.isValid,
-      tradeValidation.isLoading,
-      wallet.isConnected,
       handlePayNow,
     ]
   );
@@ -873,7 +802,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
               selectedProviderWalletAddress={
                 orderDetails.logisticsProviderWalletAddress[0]
               }
-              // disabled={paymentState.isCompleted}
             />
           )}
 

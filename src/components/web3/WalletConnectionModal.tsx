@@ -43,17 +43,27 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
   const [connectionTimeout, setConnectionTimeout] = useState(false);
   const [walletConnectLoading, setWalletConnectLoading] = useState(false);
 
-  // Memoized available connectors with enhanced filtering
+  useEffect(() => {
+    const walletConnectProjectId = import.meta.env
+      .VITE_WALLETCONNECT_PROJECT_ID;
+    if (
+      !walletConnectProjectId &&
+      connectors.some((c) => c.name.toLowerCase().includes("walletconnect"))
+    ) {
+      console.warn("WalletConnect enabled but no project ID configured");
+    }
+  }, [connectors]);
+
   const availableConnectors = useMemo(() => {
     return connectors.filter((connector) => {
       if (connector.name.toLowerCase().includes("walletconnect")) {
-        return !!import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+        const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+        return !!projectId;
       }
       return connector.ready !== false;
     });
   }, [connectors]);
 
-  // Memoized supported networks display
   const supportedNetworks = useMemo(() => {
     return SUPPORTED_CHAINS.map((chain) => {
       const metadata = getChainMetadata(chain.id);
@@ -62,10 +72,9 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
         name: metadata?.shortName || chain.name,
         isTarget: chain.id === TARGET_CHAIN.id,
       };
-    }).slice(0, 4); // Show max 4 networks
+    }).slice(0, 4);
   }, []);
 
-  // Enhanced connection success handler
   useEffect(() => {
     if (wallet.isConnected && connectingWallet) {
       const cleanup = () => {
@@ -83,7 +92,7 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
     }
   }, [wallet.isConnected, connectingWallet, onClose, showSnackbar]);
 
-  // Optimized connection timeout with cleanup
+  // connection timeout with cleanup
   useEffect(() => {
     if (!connectingWallet) return;
 
@@ -94,7 +103,7 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
     return () => clearTimeout(timeoutId);
   }, [connectingWallet]);
 
-  // Enhanced WalletConnect loading state
+  // WalletConnect loading state
   useEffect(() => {
     if (!connectingWallet?.toLowerCase().includes("walletconnect")) return;
 
@@ -126,7 +135,7 @@ const WalletConnectionModal: React.FC<WalletConnectionModalProps> = ({
         setConnectionTimeout(false);
         setWalletConnectLoading(false);
 
-        // Enhanced error handling
+        // error handling
         if (error.message?.includes("User rejected")) {
           showSnackbar("Connection cancelled", "info");
         } else if (error.message?.includes("Project ID")) {

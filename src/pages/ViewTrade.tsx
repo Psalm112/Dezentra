@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Container from "../components/common/Container";
 import Title from "../components/common/Title";
@@ -13,14 +13,17 @@ import { useOrderData } from "../utils/hooks/useOrder";
 import { useWeb3 } from "../context/Web3Context";
 import WalletConnectionModal from "../components/web3/WalletConnectionModal";
 
-const ViewTrade = () => {
+const ViewTrade = memo(() => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TradeTab>("active");
   const [isLoading, setIsLoading] = useState(true);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const { wallet } = useWeb3();
-  // const { clearError } = useWallet();
-  // const { isConnected, isConnecting, error } = useWalletStatus();
+
+  // Refs for cleanup
+  const mountedRef = useRef(true);
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const {
     activeTrades,
     completedTrades,
@@ -29,6 +32,7 @@ const ViewTrade = () => {
     loading: orderLoading,
   } = useOrderData();
 
+  // filtered trades
   const filteredActiveTrades = useMemo(() => {
     return activeTrades?.filter((trade) => trade && trade.product) || [];
   }, [activeTrades]);
@@ -37,7 +41,7 @@ const ViewTrade = () => {
     return completedTrades?.filter((trade) => trade && trade.product) || [];
   }, [completedTrades]);
 
-  // Tab change handler
+  // handlers
   const handleTabChange = useCallback((tab: TradeTab) => {
     setActiveTab(tab);
   }, []);
@@ -49,6 +53,11 @@ const ViewTrade = () => {
     [navigate]
   );
 
+  const handleCloseConnectionModal = useCallback(() => {
+    setShowConnectionModal(false);
+  }, []);
+
+  // load orders function
   const loadOrders = useCallback(
     async (silent = false) => {
       if (!wallet.isConnected) return;
@@ -86,30 +95,91 @@ const ViewTrade = () => {
     [wallet.isConnected, fetchBuyerOrders, fetchMerchantOrders]
   );
 
+  // tab configuration
+  const tabConfig = useMemo(
+    () => [
+      {
+        text: "Active",
+        isActive: activeTab === "active",
+        onClick: () => handleTabChange("active"),
+        count: filteredActiveTrades.length,
+      },
+      {
+        text: "Completed",
+        isActive: activeTab === "completed",
+        onClick: () => handleTabChange("completed"),
+        count: filteredCompletedTrades.length,
+      },
+    ],
+    [
+      activeTab,
+      filteredActiveTrades.length,
+      filteredCompletedTrades.length,
+      handleTabChange,
+    ]
+  );
+
+  // content based on active tab
+  const tabContent = useMemo(() => {
+    if (activeTab === "active") {
+      return filteredActiveTrades.map((trade) => (
+        <div
+          key={trade._id}
+          onClick={() => handleTradeClick(trade._id)}
+          className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <ActiveTradeCard trade={trade} />
+        </div>
+      ));
+    } else {
+      return filteredCompletedTrades.map((trade) => (
+        <div
+          key={trade._id}
+          onClick={() => handleTradeClick(trade._id)}
+          className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
+        >
+          <CompletedTradeCard trade={trade} />
+        </div>
+      ));
+    }
+  }, [
+    activeTab,
+    filteredActiveTrades,
+    filteredCompletedTrades,
+    handleTradeClick,
+  ]);
+
   // Initial data fetch effect
   useEffect(() => {
-    let isMounted = true;
+    mountedRef.current = true;
 
     const initializeOrders = async () => {
       if (!wallet.isConnected) return;
 
       await loadOrders(false);
 
-      if (isMounted) {
-        const refreshInterval = setInterval(() => {
+      if (mountedRef.current) {
+        refreshIntervalRef.current = setInterval(() => {
           if (activeTab === "active") {
             loadOrders(true);
           }
         }, 30000);
 
-        return () => clearInterval(refreshInterval);
+        return () => {
+          if (refreshIntervalRef.current) {
+            clearInterval(refreshIntervalRef.current);
+          }
+        };
       }
     };
 
     initializeOrders();
 
     return () => {
-      isMounted = false;
+      mountedRef.current = false;
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
     };
   }, [wallet.isConnected, loadOrders, activeTab]);
 
@@ -123,20 +193,14 @@ const ViewTrade = () => {
     }
   }, [orderLoading, wallet.isConnected]);
 
-  // Clear wallet errors when component mounts
-  // useEffect(() => {
-  //   if (error) {
-  //     clearError();
-  //   }
-  // }, [error, clearError]);
-
+  // Show wallet connection UI if not connected
   if (!wallet.isConnected && !wallet.isConnecting) {
     return (
       <div className="bg-Dark min-h-screen text-white">
         <Container>
           <WalletConnectionModal
             isOpen={showConnectionModal}
-            onClose={() => setShowConnectionModal(false)}
+            onClose={handleCloseConnectionModal}
           />
         </Container>
       </div>
@@ -144,37 +208,30 @@ const ViewTrade = () => {
   }
 
   return (
-    <div className="bg-Dark min-h-screen text-white relative">
+    <div className="bg-Dark min-h-screen text-white">
       <Container>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <Title text="Trade" className="text-center my-8 text-3xl" />
+          <Title text="View Trades" className="text-center my-8 text-3xl" />
         </motion.div>
 
-        {/* Tab Navigation */}
         <div className="max-w-screen-lg mx-auto bg-[#212428] rounded-lg overflow-hidden">
-          <div className="flex max-xxs:flex-wrap border-b border-[#292B30] bg-[#292B30] w-full items-center">
-            <Tab
-              text="Active Trades"
-              isActive={activeTab === "active"}
-              onClick={() => handleTabChange("active")}
-              count={filteredActiveTrades.length}
-              className="w-full"
-            />
-            <Tab
-              text="Completed"
-              isActive={activeTab === "completed"}
-              onClick={() => handleTabChange("completed")}
-              count={filteredCompletedTrades.length}
-              className="w-full"
-            />
+          <div className="flex flex-wrap border-b border-[#292B30]">
+            {tabConfig.map((tab) => (
+              <Tab
+                key={tab.text}
+                text={tab.text}
+                isActive={tab.isActive}
+                onClick={tab.onClick}
+                count={tab.count}
+              />
+            ))}
           </div>
 
-          {/* Content Area */}
-          <div className="py-4">
+          <div className="p-4">
             <AnimatePresence mode="wait">
               {isLoading ? (
                 <ProductListingSkeleton key="loading" />
@@ -187,46 +244,21 @@ const ViewTrade = () => {
                   transition={{ duration: 0.3 }}
                   className="space-y-6"
                 >
-                  {activeTab === "active" && (
-                    <>
-                      {filteredActiveTrades.length > 0 ? (
-                        filteredActiveTrades.map((trade) => (
-                          <div
-                            key={trade._id}
-                            onClick={() => handleTradeClick(trade._id)}
-                            className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                          >
-                            <ActiveTradeCard trade={trade} />
-                          </div>
-                        ))
-                      ) : (
-                        <EmptyState
-                          title="No Active Trades"
-                          message="Once you start a trade, you'll see it here."
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {activeTab === "completed" && (
-                    <>
-                      {filteredCompletedTrades.length > 0 ? (
-                        filteredCompletedTrades.map((trade) => (
-                          <div
-                            key={trade._id}
-                            onClick={() => handleTradeClick(trade._id)}
-                            className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
-                          >
-                            <CompletedTradeCard trade={trade} />
-                          </div>
-                        ))
-                      ) : (
-                        <EmptyState
-                          title="No Completed Trades"
-                          message="Your completed trades will appear here."
-                        />
-                      )}
-                    </>
+                  {tabContent.length > 0 ? (
+                    tabContent
+                  ) : (
+                    <EmptyState
+                      title={
+                        activeTab === "active"
+                          ? "No Active Trades"
+                          : "No Completed Trades"
+                      }
+                      message={
+                        activeTab === "active"
+                          ? "No active trades found"
+                          : "No completed trades found"
+                      }
+                    />
                   )}
                 </motion.div>
               )}
@@ -236,6 +268,8 @@ const ViewTrade = () => {
       </Container>
     </div>
   );
-};
+});
+
+ViewTrade.displayName = "ViewTrade";
 
 export default ViewTrade;
