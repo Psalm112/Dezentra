@@ -160,7 +160,7 @@ const ProductCard = React.memo(
           </div>
 
           {/* Network warning indicator */}
-          {calculatedPrices.showNetworkWarning && wallet.isConnected && (
+          {/* {calculatedPrices.showNetworkWarning && wallet.isConnected && (
             <div className="absolute top-12 left-2 z-10">
               <div className="bg-yellow-500/20 border border-yellow-500/40 rounded-md px-2 py-1">
                 <span className="text-yellow-400 text-xs font-medium">
@@ -168,7 +168,7 @@ const ProductCard = React.memo(
                 </span>
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Image container */}
           <div className="w-full pt-[100%] relative bg-[#1A1B1F]/30 overflow-hidden">

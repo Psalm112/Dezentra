@@ -281,3 +281,12 @@ export const TIMEOUTS = {
   BALANCE_REFRESH: 30000, // 30 seconds
   ALLOWANCE_REFRESH: 15000, // 15 seconds
 } as const;
+
+export const CHAIN_IDS = {
+  AVALANCHE_FUJI: 43113,
+  BASE_SEPOLIA: 84532,
+  SEPOLIA: 11155111,
+  ARBITRUM_SEPOLIA: 421614,
+} as const;
+
+export const SUPPORTED_CHAIN_IDS = SUPPORTED_CHAINS.map((chain) => chain.id);
