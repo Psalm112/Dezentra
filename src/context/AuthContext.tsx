@@ -95,7 +95,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (provider === "google") {
       // storage.setItem("auth_redirect", window.location.origin);
 
-      const redirectUrl = `${API_URL}/auth/google`;
+      const redirectUrl = `${API_URL}/auth/google?origin="https://dezentra.netlify.app"`;
       // ?frontend=${FRONTEND_URL}
       // console.log("Redirecting to:", redirectUrl);
       window.location.href = redirectUrl;
