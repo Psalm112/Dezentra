@@ -133,7 +133,7 @@ const watchlistSlice = createSlice({
       state.lastFetched = null;
       state.isWatchlist = {};
     },
-    // Add immediate state update for better UX
+    // immediate state update
     optimisticAddToWatchlist: (state, action: PayloadAction<string>) => {
       state.isWatchlist[action.payload] = true;
     },

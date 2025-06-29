@@ -134,6 +134,11 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     }
   }, [orderId]);
 
+  // // Debug: Log navigatePath changes
+  // useEffect(() => {
+  //   console.log("PendingPaymentStatus - navigatePath changed:", navigatePath);
+  // }, [navigatePath]);
+
   // cleanup effect
   useEffect(() => {
     mountedRef.current = true;
@@ -227,7 +232,6 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
         const parsed = Number(balanceStr);
         return Number.isFinite(parsed) ? parsed : 0;
       })();
-
       return {
         totalAmount,
         requiredAmount,
@@ -283,6 +287,7 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     loading,
     wallet.isConnected,
     calculations.totalAmount,
+    calculations.hasSufficientBalance,
   ]);
 
   // Set initial quantity
@@ -338,67 +343,15 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     }, 1000);
   }, [refetchBalance, isLoadingBalance]);
 
-  // navigation handler
-  // const handleNavigation = useCallback(
-  //   (transaction: PaymentTransaction) => {
-  //     // Prevent multiple navigation attempts
-  //     if (paymentState.navigationTriggered) {
-  //       return;
-  //     }
-
-  //     setPaymentState((prev) => ({ ...prev, navigationTriggered: true }));
-
-  //     const performNavigation = () => {
-  //       if (!mountedRef.current) return;
-
-  //       try {
-  //         if (navigatePath) {
-  //           //             const targetPath = navigatePath.replace(
-  //           //               "status=release",
-  //           //               "status=accepted"
-  //           //             );
-  //           // targetPath,
-  //           //   {
-  //           //     replace: true,
-  //           //     state: {
-  //           //       paymentCompleted: true,
-  //           //       transaction: transaction,
-  //           //       timestamp: Date.now(),
-  //           //     },
-  //           //   };
-  //           navigate(navigatePath);
-  //         } else if (onReleaseNow) {
-  //           onReleaseNow();
-  //         }
-  //       } catch (error) {
-  //         console.error("Navigation error:", error);
-  //         // Fallback navigation attempt
-  //         if (navigatePath) {
-  //           window.location.href = navigatePath.replace(
-  //             "status=release",
-  //             "status=accepted"
-  //           );
-  //         }
-  //       }
-  //     };
-
-  //     // Set navigation timeout with proper cleanup
-  //     if (navigationTimeoutRef.current) {
-  //       clearTimeout(navigationTimeoutRef.current);
-  //     }
-
-  //     navigationTimeoutRef.current = setTimeout(
-  //       performNavigation,
-  //       NAVIGATION_DELAY
-  //     );
-  //   },
-  //   [navigate, navigatePath, onReleaseNow, paymentState.navigationTriggered]
-  // );
-
   // payment success handler
   const handlePaymentSuccess = useCallback(
     async (transaction: PaymentTransaction) => {
-      if (!mountedRef.current) return;
+      // if (!mountedRef.current) return;
+
+      console.log(
+        "Payment success handler called with navigatePath:",
+        navigatePath
+      );
 
       // Close payment modal immediately
       setIsPaymentModalOpen(false);
@@ -416,6 +369,8 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
 
         // Update order status in background with timeout
         const currentOrderId = getStoredOrderId();
+        console.log("Current order ID:", currentOrderId);
+
         if (currentOrder?._id || currentOrderId) {
           const orderStatusPromise = changeOrderStatus(
             currentOrder?._id || currentOrderId!,
@@ -450,37 +405,89 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
           }
         }
 
-        // Clear stored order ID
-        clearStoredOrderId();
-
+        // Clear any existing navigation timeout
         if (navigationTimeoutRef.current) {
           clearTimeout(navigationTimeoutRef.current);
         }
 
+        // Perform navigation after a short delay to ensure UI updates
         navigationTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current && navigatePath) {
-            navigate(navigatePath, {
-              replace: true,
-              state: {
-                paymentCompleted: true,
-                transaction: transaction,
-                timestamp: Date.now(),
-              },
-            });
+          console.log(
+            "Navigation timeout triggered, mountedRef:",
+            mountedRef.current,
+            "navigatePath:",
+            navigatePath
+          );
+          if (navigatePath) {
+            console.log("Navigating to:", navigatePath);
+            try {
+              navigate(navigatePath, {
+                replace: true,
+                state: {
+                  paymentCompleted: true,
+                  transaction: transaction,
+                  timestamp: Date.now(),
+                },
+              });
+            } catch (navError) {
+              console.error("Navigation failed:", navError);
+              // Fallback: try direct navigation
+              window.location.href = navigatePath;
+            }
+          } else {
+            console.warn(
+              "Navigation skipped - component unmounted or no navigatePath"
+            );
+            // If no navigatePath, try to construct one
+            if (mountedRef.current && orderId) {
+              const fallbackPath = `/orders/${orderId}?status=release`;
+              console.log("Using fallback path:", fallbackPath);
+              try {
+                navigate(fallbackPath, {
+                  replace: true,
+                  state: {
+                    paymentCompleted: true,
+                    transaction: transaction,
+                    timestamp: Date.now(),
+                  },
+                });
+              } catch (navError) {
+                console.error("Fallback navigation failed:", navError);
+                window.location.href = fallbackPath;
+              }
+            }
           }
         }, NAVIGATION_DELAY);
+
+        // Clear stored order ID after navigation is set up
+        setTimeout(() => {
+          clearStoredOrderId();
+        }, NAVIGATION_DELAY + 500);
       } catch (error) {
         console.error("Post-payment processing error:", error);
 
         // Fallback navigation on error
         setTimeout(() => {
           if (mountedRef.current && navigatePath) {
-            navigate(navigatePath, { replace: true });
+            console.log("Fallback navigation to:", navigatePath);
+            try {
+              navigate(navigatePath, { replace: true });
+            } catch (navError) {
+              console.error("Fallback navigation failed:", navError);
+              window.location.href = navigatePath;
+            }
           }
         }, FALLBACK_NAVIGATION_DELAY);
       }
     },
-    [showSnackbar, changeOrderStatus, currentOrder, navigatePath, navigate]
+    [
+      showSnackbar,
+      changeOrderStatus,
+      currentOrder,
+      navigatePath,
+      navigate,
+      orderId,
+    ]
   );
 
   // Payment handler
@@ -653,6 +660,7 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
       escrowAddress,
       handlePaymentModalClose,
       handlePaymentSuccess,
+      navigatePath,
     ]
   );
 
@@ -734,6 +742,28 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
     [paymentState.isCompleted]
   );
 
+  // Debug function to test navigation manually
+  const testNavigation = useCallback(() => {
+    console.log("Testing navigation manually to:", navigatePath);
+    if (navigatePath) {
+      try {
+        navigate(navigatePath, {
+          replace: true,
+          state: {
+            paymentCompleted: true,
+            transaction: null,
+            timestamp: Date.now(),
+          },
+        });
+      } catch (error) {
+        console.error("Manual navigation test failed:", error);
+        window.location.href = navigatePath;
+      }
+    } else {
+      console.warn("No navigatePath available for testing");
+    }
+  }, [navigatePath, navigate]);
+
   // Early return for invalid states
   if (!orderValidation.isValid && !paymentState.isCompleted) {
     return (
@@ -769,6 +799,14 @@ const PendingPaymentStatus: FC<PendingPaymentStatusProps> = ({
           <div className="w-full flex items-center justify-center flex-wrap gap-4">
             {editButton}
             {payButton}
+            {/* Debug button - only show in development */}
+            {process.env.NODE_ENV === "development" && (
+              <Button
+                title="Test Navigation"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-3 rounded transition-colors duration-200"
+                onClick={testNavigation}
+              />
+            )}
           </div>
         }
       />

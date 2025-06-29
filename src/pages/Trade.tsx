@@ -21,7 +21,7 @@ import LazyFloatingButton from "../components/common/LazyFloatingButton";
 import { useWeb3 } from "../context/Web3Context";
 import WalletConnectionModal from "../components/web3/WalletConnectionModal";
 
-// Lazy load components for better performance
+// Lazy load components
 const ProductCard = lazy(() => import("../components/trade/ProductCard"));
 const IncomingOrderCard = lazy(
   () => import("../components/trade/IncomingOrderCard")

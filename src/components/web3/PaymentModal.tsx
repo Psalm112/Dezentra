@@ -18,7 +18,6 @@ import { formatCurrency } from "../../utils/web3.utils";
 import { useSnackbar } from "../../context/SnackbarContext";
 import { Order } from "../../utils/types";
 import { parseWeb3Error } from "../../utils/errorParser";
-import NetworkSwitcher from "./NetworkSwitcher";
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -101,18 +100,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
-  const [selectedChain, setSelectedChain] = useState<number | null>(null);
   const [availableChains, setAvailableChains] = useState<ChainInfo[]>([]);
   const [isLoadingChains, setIsLoadingChains] = useState(true);
   const [crossChainFees, setCrossChainFees] = useState<string>("0");
+  const [randomDestinationChain, setRandomDestinationChain] = useState<
+    number | null
+  >(null);
 
   const currentChain = useMemo(() => {
     return chainId ? SUPPORTED_CHAINS[chainId] : null;
   }, [chainId]);
 
   const destinationChain = useMemo(() => {
-    return selectedChain ? SUPPORTED_CHAINS[selectedChain] : null;
-  }, [selectedChain]);
+    // Use randomly generated destination chain instead of selected chain
+    return randomDestinationChain
+      ? SUPPORTED_CHAINS[randomDestinationChain]
+      : null;
+  }, [randomDestinationChain]);
 
   const isCrossChainPayment = useMemo(() => {
     return (
@@ -155,28 +159,18 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
         setAvailableChains(mappedChains);
 
-        if (!selectedChain) {
-          const defaultChain =
-            mappedChains.find((chain) => chain.chainId === chainId) ||
-            mappedChains.find((chain) => chain.chainId === 43113) ||
-            mappedChains[0];
-          if (defaultChain) {
-            setSelectedChain(defaultChain.chainId);
-          }
-        }
+        // Note: randomDestinationChain is generated separately when modal opens
       } catch (error) {
         console.error("Failed to load supported chains:", error);
         setAvailableChains(Object.values(SUPPORTED_CHAINS));
-        if (!selectedChain) {
-          setSelectedChain(43113);
-        }
+        // Note: randomDestinationChain is generated separately when modal opens
       } finally {
         setIsLoadingChains(false);
       }
     };
 
     loadSupportedChains();
-  }, [isOpen, getSupportedChains, chainId, selectedChain]);
+  }, [isOpen, getSupportedChains]);
 
   // Estimate cross-chain fees
   useEffect(() => {
@@ -240,6 +234,32 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       setIsProcessing(false);
     }
   }, [isOpen]);
+
+  // Generate random destination chain
+  const generateRandomDestinationChain = useCallback(() => {
+    if (!chainId) return;
+
+    const supportedChainIds = Object.keys(SUPPORTED_CHAINS).map(Number);
+    const availableChains = supportedChainIds.filter((id) => id !== chainId);
+
+    if (availableChains.length === 0) {
+      // If no other chains available, use current chain (no cross-chain)
+      setRandomDestinationChain(chainId);
+      return;
+    }
+
+    // Randomly select a destination chain
+    const randomIndex = Math.floor(Math.random() * availableChains.length);
+    const randomChainId = availableChains[randomIndex];
+    setRandomDestinationChain(randomChainId);
+  }, [chainId]);
+
+  // Generate random destination chain when modal opens
+  useEffect(() => {
+    if (isOpen && chainId) {
+      generateRandomDestinationChain();
+    }
+  }, [isOpen, chainId, generateRandomDestinationChain]);
 
   const handlePayment = useCallback(async () => {
     if (!wallet.isConnected) {
@@ -461,14 +481,65 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
   const renderSupportedChainSelector = () => (
     <div className="space-y-3">
-      <h3 className="text-lg font-semibold text-white">Supported Networks</h3>
-      <NetworkSwitcher
-        selectedChainId={selectedChain ?? undefined}
-        onChainSelect={setSelectedChain}
-        variant="grid"
-        size="md"
-        disabled={isProcessing || step !== "review"}
-      />
+      <h3 className="text-lg font-semibold text-white">Transaction Details</h3>
+
+      {/* Current Network */}
+      <div className="bg-Dark/50 border border-Red/20 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-Red/20 rounded-full flex items-center justify-center">
+              <span className="text-Red text-sm font-bold">S</span>
+            </div>
+            <div>
+              <p className="text-white font-medium">Source Network</p>
+              <p className="text-sm text-gray-400">
+                {currentChain?.name || "Unknown Network"}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-400">Connected</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Destination Network */}
+      <div className="bg-Dark/50 border border-blue-500/20 rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
+              <span className="text-blue-400 text-sm font-bold">D</span>
+            </div>
+            <div>
+              <p className="text-white font-medium">Destination Network</p>
+              <p className="text-sm text-gray-400">
+                {destinationChain?.name || "Loading..."}
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-gray-400">Randomly Selected</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Cross-chain indicator */}
+      {isCrossChainPayment && (
+        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <HiArrowPath className="w-4 h-4 text-blue-400" />
+            <span className="text-blue-400 text-sm font-medium">
+              Cross-Chain Transaction Detected
+            </span>
+          </div>
+          <p className="text-xs text-blue-400/80 mt-1">
+            {currentChain?.name} → {destinationChain?.name}
+          </p>
+          <p className="text-xs text-blue-400/80 mt-1">
+            Estimated fees: ~{crossChainFees} {currentChain?.nativeCurrency}
+          </p>
+        </div>
+      )}
     </div>
   );
 
@@ -478,21 +549,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         return (
           <div className="space-y-6">
             {renderSupportedChainSelector()}
-
-            {isCrossChainPayment && (
-              <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <HiArrowPath className="w-4 h-4 text-blue-400" />
-                  <span className="text-blue-400 font-medium">
-                    Cross-Chain Payment
-                  </span>
-                </div>
-                <p className="text-xs text-blue-400/80">
-                  Estimated fees: ~{crossChainFees}{" "}
-                  {currentChain?.nativeCurrency}
-                </p>
-              </div>
-            )}
 
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-white">

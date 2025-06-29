@@ -89,24 +89,32 @@ interface ExchangeRates {
   lastUpdated: number;
 }
 
-// Improved default rates with better fallbacks
 const DEFAULT_RATES: Omit<ExchangeRates, "lastUpdated"> = {
-  USDT_NATIVE: 0.025, // 1 USDT = 0.025 AVAX (more accurate)
+  USDT_NATIVE: 0.025, // 1 USDT = 0.025 AVAX
   USDT_FIAT: 1,
-  NATIVE_FIAT: 40, // 1 AVAX = ~$40 (more current)
+  NATIVE_FIAT: 40, // 1 AVAX = ~$40
   nativeTokenSymbol: "AVAX",
   nativeTokenName: "Avalanche",
   chainId: DEFAULT_CHAIN_ID,
 };
 
-// Optimized cache configuration
+// cache configuration
 const CACHE_CONFIG = {
-  RATE_CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
-  GEO_CACHE_DURATION: 24 * 60 * 60 * 1000, // 24 hours
-  STALE_CACHE_DURATION: 30 * 60 * 1000, // 30 minutes - use stale cache if fresh fetch fails
-  API_TIMEOUT: 8000, // 8 seconds
-  RETRY_DELAY: 1000,
-  MAX_RETRIES: 2,
+  RATE_CACHE_DURATION: 15 * 60 * 1000,
+  GEO_CACHE_DURATION: 24 * 60 * 60 * 1000,
+  STALE_CACHE_DURATION: 60 * 60 * 1000,
+  API_TIMEOUT: 10000,
+  RETRY_DELAY: 2000,
+  MAX_RETRIES: 1,
+  RATE_LIMIT_DELAY: 60000,
+} as const;
+
+// API endpoints with fallbacks
+const API_ENDPOINTS = {
+  PRIMARY: "/.netlify/functions/coingecko-proxy",
+  COINGECKO: "https://api.coingecko.com/api/v3/simple/price",
+  PROXY: "https://api.allorigins.win/raw?url=",
+  PROXY_ALT: "https://cors-anywhere.herokuapp.com/",
 } as const;
 
 const CACHE_KEYS = {
@@ -131,7 +139,7 @@ const isSupportedChain = (chainId: number | undefined): boolean => {
   return SUPPORTED_CHAINS.some((chain) => chain.id === chainId);
 };
 
-// Get effective chain ID with better fallback logic
+// Get effective chain ID
 const getEffectiveChainId = (
   chainId: number | undefined,
   isConnected: boolean
@@ -160,7 +168,7 @@ export const useCurrencyConverter = ({
     [chainId, isConnected]
   );
 
-  // Get native token info with better fallback
+  // Get native token info
   const nativeTokenInfo = useMemo(() => {
     const tokenInfo = CHAIN_NATIVE_TOKENS[effectiveChainId];
     if (tokenInfo) return tokenInfo;
@@ -183,7 +191,7 @@ export const useCurrencyConverter = ({
     return CHAIN_NATIVE_TOKENS[DEFAULT_CHAIN_ID];
   }, [effectiveChainId]);
 
-  // Initialize state with better caching
+  // Initialize state
   const [rates, setRates] = useState<ExchangeRates>(() => {
     const cacheKey = CACHE_KEYS.RATES(effectiveChainId);
     try {
@@ -228,7 +236,7 @@ export const useCurrencyConverter = ({
     return "USD";
   });
 
-  // Optimized geo data fetching with better error handling
+  // geo data fetching
   const fetchGeoData = useCallback(async (): Promise<string> => {
     try {
       const cachedGeo = localStorage.getItem(CACHE_KEYS.GEO);
@@ -280,7 +288,7 @@ export const useCurrencyConverter = ({
     return userCountry;
   }, [userCountry]);
 
-  // Enhanced rate fetching with better error handling and retries
+  // rate fetching
   const fetchRates = useCallback(
     async (forceRefresh = false) => {
       const cacheKey = CACHE_KEYS.RATES(effectiveChainId);
@@ -327,31 +335,131 @@ export const useCurrencyConverter = ({
           );
 
           try {
-            const response = await fetch(
-              `https://api.coingecko.com/api/v3/simple/price?ids=tether,${coingeckoId}&vs_currencies=${currencies}`,
-              {
-                signal: controller.signal,
-                headers: {
-                  Accept: "application/json",
-                },
+            // Try multiple API approaches with fallbacks
+            let response: Response;
+            let data: any;
+            let apiUsed = "";
+
+            // Strategy 1: Try Netlify Function first (best option)
+            try {
+              response = await fetch(
+                `${API_ENDPOINTS.PRIMARY}?ids=tether,${coingeckoId}&vs_currencies=${currencies}`,
+                {
+                  signal: controller.signal,
+                  headers: {
+                    Accept: "application/json",
+                  },
+                }
+              );
+
+              if (response.ok) {
+                data = await response.json();
+                apiUsed = "netlify-function";
+              } else {
+                throw new Error(`Netlify Function failed: ${response.status}`);
               }
-            );
+            } catch (netlifyError) {
+              console.warn(
+                "Netlify Function failed, trying direct API:",
+                netlifyError
+              );
+
+              // Strategy 2: Try direct API call
+              try {
+                response = await fetch(
+                  `${API_ENDPOINTS.COINGECKO}?ids=tether,${coingeckoId}&vs_currencies=${currencies}`,
+                  {
+                    signal: controller.signal,
+                    headers: {
+                      Accept: "application/json",
+                    },
+                  }
+                );
+
+                if (response.ok) {
+                  data = await response.json();
+                  apiUsed = "direct";
+                } else {
+                  throw new Error(`Direct API failed: ${response.status}`);
+                }
+              } catch (directError) {
+                console.warn(
+                  "Direct API call failed, trying proxy:",
+                  directError
+                );
+
+                // Strategy 3: Try first CORS proxy
+                try {
+                  const proxyUrl = `${API_ENDPOINTS.PROXY}${encodeURIComponent(
+                    `${API_ENDPOINTS.COINGECKO}?ids=tether,${coingeckoId}&vs_currencies=${currencies}`
+                  )}`;
+
+                  response = await fetch(proxyUrl, {
+                    signal: controller.signal,
+                    headers: {
+                      Accept: "application/json",
+                    },
+                  });
+
+                  if (response.ok) {
+                    data = await response.json();
+                    apiUsed = "proxy1";
+                  } else {
+                    throw new Error(`Proxy 1 failed: ${response.status}`);
+                  }
+                } catch (proxy1Error) {
+                  console.warn(
+                    "First proxy failed, trying alternative:",
+                    proxy1Error
+                  );
+
+                  // Strategy 4: Try alternative CORS proxy
+                  try {
+                    const proxyUrl2 = `${API_ENDPOINTS.PROXY_ALT}${API_ENDPOINTS.COINGECKO}?ids=tether,${coingeckoId}&vs_currencies=${currencies}`;
+
+                    response = await fetch(proxyUrl2, {
+                      signal: controller.signal,
+                      headers: {
+                        Accept: "application/json",
+                        Origin: window.location.origin,
+                      },
+                    });
+
+                    if (response.ok) {
+                      data = await response.json();
+                      apiUsed = "proxy2";
+                    } else {
+                      throw new Error(`Proxy 2 failed: ${response.status}`);
+                    }
+                  } catch (proxy2Error) {
+                    console.warn(
+                      "All proxies failed, using fallback rates:",
+                      proxy2Error
+                    );
+                    throw new Error("All API attempts failed");
+                  }
+                }
+              }
+            }
 
             clearTimeout(timeoutId);
 
             if (!response.ok) {
+              if (response.status === 429) {
+                // Rate limited - store this info and use cached data
+                localStorage.setItem("rate_limited", Date.now().toString());
+                throw new Error("Rate limited - using cached data");
+              }
               throw new Error(
                 `HTTP ${response.status}: ${response.statusText}`
               );
             }
 
-            const data = await response.json();
-
             if (!data.tether || !data[coingeckoId]) {
               throw new Error("Invalid API response structure");
             }
 
-            // Calculate rates with better fallbacks
+            // Calculate rates
             const usdtPrice = data.tether.usd || 1;
             const nativePrice = data[coingeckoId].usd;
 
@@ -377,7 +485,11 @@ export const useCurrencyConverter = ({
 
             setRates(newRates);
             localStorage.setItem(cacheKey, JSON.stringify(newRates));
+            // Clear rate limit flag on successful fetch
+            localStorage.removeItem("rate_limited");
             setError(null);
+
+            console.info(`Successfully fetched rates using ${apiUsed} API`);
           } catch (fetchError) {
             clearTimeout(timeoutId);
             throw fetchError;
@@ -389,9 +501,10 @@ export const useCurrencyConverter = ({
               `Rate fetch attempt ${retryCount} failed, retrying...`,
               error
             );
-            await new Promise((resolve) =>
-              setTimeout(resolve, CACHE_CONFIG.RETRY_DELAY * retryCount)
-            );
+            // Exponential backoff
+            const delay =
+              CACHE_CONFIG.RETRY_DELAY * Math.pow(2, retryCount - 1);
+            await new Promise((resolve) => setTimeout(resolve, delay));
             await attemptFetch();
           } else {
             throw error;
@@ -446,7 +559,7 @@ export const useCurrencyConverter = ({
     ]
   );
 
-  // Optimized price conversion with validation
+  // price conversion
   const convertPrice = useCallback(
     (price: number, from: Currency, to: Currency): number => {
       if (from === to || !isFinite(price) || price === 0) return price;
@@ -476,7 +589,7 @@ export const useCurrencyConverter = ({
     [rates]
   );
 
-  // Enhanced price formatting with better locale handling
+  // price formatting
   const formatPrice = useCallback(
     (price: number, currency: Currency): string => {
       if (!isFinite(price) || price == null) return "—";
@@ -559,11 +672,27 @@ export const useCurrencyConverter = ({
     rates.lastUpdated,
   ]);
 
-  // Auto-refresh interval with cleanup
+  // Auto-refresh interval with cleanup and rate limit checking
   useEffect(() => {
     if (isUnsupportedNetwork) return;
 
     const interval = setInterval(() => {
+      // Check if we're rate limited
+      const rateLimited = localStorage.getItem("rate_limited");
+      if (rateLimited) {
+        const rateLimitTime = parseInt(rateLimited);
+        const timeSinceRateLimit = Date.now() - rateLimitTime;
+
+        // If rate limited recently, skip this refresh
+        if (timeSinceRateLimit < CACHE_CONFIG.RATE_LIMIT_DELAY) {
+          console.info("Skipping rate fetch due to recent rate limiting");
+          return;
+        } else {
+          // Clear rate limit flag if enough time has passed
+          localStorage.removeItem("rate_limited");
+        }
+      }
+
       if (!loading) {
         fetchRates();
       }

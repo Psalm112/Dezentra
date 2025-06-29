@@ -135,15 +135,15 @@ const Header = () => {
           aria-label="Dezentra Home"
         >
           <div className="w-8 h-8 md:w-9 md:h-9 relative overflow-hidden">
-            <img
+            {/* <img
               src={FullLogo}
               className="w-full md:hidden transition-transform group-hover:scale-110 object-cover object-[25%_25%]"
               alt="dezentra logo"
               loading="eager"
-            />
+            /> */}
             <img
               src={Logo}
-              className="w-full hidden md:block transition-transform group-hover:scale-110 object-cover object-[25%_25%]"
+              className="w-full transition-transform group-hover:scale-110 object-cover object-[25%_25%]"
               alt="dezentra logo"
               loading="eager"
             />

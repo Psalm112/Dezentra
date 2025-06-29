@@ -87,7 +87,7 @@ const PurchaseSection = ({
       ? `${parseFloat(wallet.balance).toFixed(4)} ${nativeToken.symbol}`
       : `0 ${nativeToken.symbol}`;
 
-    const usdtBalance = wallet.usdtBalance?.usdt || "Loading...";
+    const usdtBalance = wallet.usdtBalance?.usdt || "0 USDT";
 
     return { nativeBalance, usdtBalance };
   }, [

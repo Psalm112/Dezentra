@@ -201,46 +201,45 @@ const FundsReleaseStatus: FC<FundsReleaseStatusProps> = ({
 
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      if (mountedRef.current) {
-        setIsDeliveryConfirmed(true);
-        setIsConfirmationModalOpen(false);
+      // if (mountedRef.current) {
+      setIsDeliveryConfirmed(true);
+      setIsConfirmationModalOpen(false);
 
-        try {
-          await changeOrderStatus(orderId, "completed", false);
-        } catch (error) {
-          console.warn("Background status update failed:", error);
-        }
-
-        showSnackbar(
-          "🎉 Delivery confirmed! Order completed successfully.",
-          "success"
-        );
-
-        // Clear stored order ID
-        clearStoredOrderId();
-
-        redirectTimeoutRef.current = setTimeout(() => {
-          if (mountedRef.current) {
-            navigate(`/orders/${orderId}?status=completed`, {
-              replace: true,
-              state: {
-                deliveryConfirmed: true,
-                completedAt: Date.now(),
-                crossChain: crossChainInfo.isCrossChain,
-              },
-            });
-          }
-        }, 2000);
+      try {
+        await changeOrderStatus(orderId, "completed", false);
+      } catch (error) {
+        console.warn("Background status update failed:", error);
       }
+
+      showSnackbar(
+        "🎉 Delivery confirmed! Order completed successfully.",
+        "success"
+      );
+
+      // Clear stored order ID
+      clearStoredOrderId();
+
+      redirectTimeoutRef.current = setTimeout(() => {
+        // if (mountedRef.current) {
+        navigate(`/orders/${orderId}?status=completed`, {
+          replace: true,
+          state: {
+            deliveryConfirmed: true,
+            completedAt: Date.now(),
+            crossChain: crossChainInfo.isCrossChain,
+          },
+        });
+        // }
+      }, 2000);
     } catch (error: any) {
-      if (mountedRef.current) {
-        console.error("Error during delivery confirmation:", error);
-        showSnackbar("Failed to confirm delivery. Please try again.", "error");
-      }
+      // if (mountedRef.current) {
+      console.error("Error during delivery confirmation:", error);
+      showSnackbar("Failed to confirm delivery. Please try again.", "error");
+      // }
     } finally {
-      if (mountedRef.current) {
-        setProcessingState((prev) => ({ ...prev, confirmDelivery: false }));
-      }
+      // if (mountedRef.current) {
+      setProcessingState((prev) => ({ ...prev, confirmDelivery: false }));
+      // }
     }
   }, [
     wallet.isConnected,
@@ -273,43 +272,44 @@ const FundsReleaseStatus: FC<FundsReleaseStatusProps> = ({
 
         await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        if (mountedRef.current) {
-          setIsDisputeModalOpen(false);
-          setDisputeReason("");
+        // if (mountedRef.current) {
+        setIsDisputeModalOpen(false);
+        setDisputeReason("");
 
-          showSnackbar(
-            "📋 Dispute submitted successfully! Admin will review within 24 hours.",
-            "success"
-          );
+        showSnackbar(
+          "📋 Dispute submitted successfully! Admin will review within 24 hours.",
+          "success"
+        );
 
-          try {
-            await changeOrderStatus(orderId, "disputed", false);
-          } catch (error) {
-            console.warn("Background dispute update failed:", error);
-          }
-
-          // Redirect to dispute tracking page
-          redirectTimeoutRef.current = setTimeout(() => {
-            if (mountedRef.current) {
-              navigate(`/orders/${orderId}?status=disputed`, {
-                replace: true,
-                state: {
-                  disputeReason: disputeReason.trim(),
-                  disputedAt: Date.now(),
-                },
-              });
-            }
-          }, 2000);
+        try {
+          await changeOrderStatus(orderId, "disputed", false);
+        } catch (error) {
+          console.warn("Background dispute update failed:", error);
         }
+
+        // Redirect to dispute tracking page
+        redirectTimeoutRef.current = setTimeout(() => {
+          // if (mountedRef.current) {
+          console;
+          navigate(`/orders/${orderId}?status=cancelled`, {
+            replace: true,
+            state: {
+              disputeReason: disputeReason.trim(),
+              disputedAt: Date.now(),
+            },
+          });
+          // }
+        }, 2000);
+        // }
       } catch (error: any) {
-        if (mountedRef.current) {
-          console.error("Error raising dispute:", error);
-          showSnackbar("Failed to submit dispute. Please try again.", "error");
-        }
+        // if (mountedRef.current) {
+        console.error("Error raising dispute:", error);
+        showSnackbar("Failed to submit dispute. Please try again.", "error");
+        // }
       } finally {
-        if (mountedRef.current) {
-          setProcessingState((prev) => ({ ...prev, raiseDispute: false }));
-        }
+        // if (mountedRef.current) {
+        setProcessingState((prev) => ({ ...prev, raiseDispute: false }));
+        // }
       }
     },
     [

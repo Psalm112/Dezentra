@@ -101,7 +101,15 @@ const ViewOrderDetail = memo(() => {
     const statusParam = urlParams.get("status");
     const paymentCompleted = location.state?.paymentCompleted;
 
+    console.log("ViewOrderDetail - initialStatus calculation:", {
+      statusParam,
+      paymentCompleted,
+      locationState: location.state,
+      locationSearch: location.search,
+    });
+
     if (paymentCompleted) {
+      console.log("Setting initialStatus to 'release' due to paymentCompleted");
       return "release" as TradeStatusType;
     }
 
@@ -109,9 +117,11 @@ const ViewOrderDetail = memo(() => {
       statusParam &&
       ["cancelled", "pending", "release", "completed"].includes(statusParam)
     ) {
+      console.log("Setting initialStatus to:", statusParam);
       return statusParam as TradeStatusType;
     }
 
+    console.log("Setting initialStatus to 'pending' (default)");
     return "pending" as TradeStatusType;
   }, [location.search, location.state]);
 
@@ -427,7 +437,13 @@ const ViewOrderDetail = memo(() => {
 
   const navigatePath = useMemo(() => {
     const currentOrderId = orderId || getStoredOrderId();
-    return `/orders/${currentOrderId}?status=release`;
+    const path = `/orders/${currentOrderId}?status=release`;
+    console.log("ViewOrderDetail - navigatePath constructed:", {
+      orderId,
+      currentOrderId,
+      path,
+    });
+    return path;
   }, [orderId]);
 
   // Loading state with cross-chain info
@@ -475,7 +491,7 @@ const ViewOrderDetail = memo(() => {
   if (error || !orderDetails) {
     return (
       <div className="bg-Dark min-h-screen flex items-center justify-center">
-        <motion.div
+        {/* <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col items-center text-white text-center px-4 max-w-md"
@@ -500,7 +516,8 @@ const ViewOrderDetail = memo(() => {
               Browse Products
             </button>
           </div>
-        </motion.div>
+        </motion.div> */}
+        <LoadingSpinner />
       </div>
     );
   }
